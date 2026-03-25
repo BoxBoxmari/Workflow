@@ -1,24 +1,16 @@
 {
-  "base_url": "https://your-api-endpoint.com/v1",
-  "subscription_key": "your-subscription-key-here",
-  "charge_code": "optional-billing-code",
-  "api_version": "2024-02-15-preview",
-  "timeout": 30
+  "base_url": "https://api.workbench.kpmg/genai/azure/openai",
+  "timeout": 300,
+  "default_api_version": "2024-06-01",
+  "model_overrides": {
+    "gpt-4o-2024-08-06-gs-ae": {
+      "api_version": "2024-06-01"
+    },
+    "gpt-5-2025-08-07-gs-ae": {
+      "api_version": "2025-01-01-preview"
+    },
+    "o3-2025-04-16-gs-ae": {
+      "api_version": "2024-12-01-preview"
+    }
+  }
 }
-
-/**
- * SECURITY WARNING:
- * -----------------
- * Do NOT check your real provider.json into version control.
- * 
- * BEST PRACTICE:
- * Use the OS Credential Manager (SecureCredentialStore) to store your 
- * subscription_key. If a key is found in the secure store, it will 
- * override any key present in this file.
- * 
- * To use this file:
- * 1. Rename to provider.json
- * 2. Fill in your base_url and api_version
- * 3. (Optional) Put your key here ONLY for local testing, or leave it 
- *    blank and use the secure store.
- */
