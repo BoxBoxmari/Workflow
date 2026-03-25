@@ -28,3 +28,7 @@ state/
 
 # OpenMemory
 .cursor/rules/openmemory.mdc
+
+# Cursor/agent tooling (không cần thiết cho production pipeline)
+.agent/
+.cursor/
