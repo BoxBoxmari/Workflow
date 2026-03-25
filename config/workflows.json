@@ -1,0 +1,445 @@
+{
+  "schema_version": 3,
+  "workflows": [
+    {
+      "id": "ba_review",
+      "name": "BA Document Review",
+      "description": "Two-step workflow: analyze a document, then summarize findings",
+      "steps": [
+        {
+          "id": "analyze",
+          "name": "analyze",
+          "model": "gpt-4-1-2025-04-14-gs-ae",
+          "prompt_version": "1",
+          "input_mapping": "input",
+          "output_mapping": "analysis",
+          "depends_on": [],
+          "enabled": true,
+          "attachments": [],
+          "title": "",
+          "purpose": "",
+          "ui": {},
+          "role_text": "",
+          "task_text": "",
+          "execution_mode": "legacy"
+        },
+        {
+          "id": "testabc",
+          "name": "test",
+          "model": "gpt-4-1-2025-04-14-gs-ae",
+          "prompt_version": "1",
+          "input_mapping": "input",
+          "output_mapping": "output",
+          "depends_on": [],
+          "enabled": true,
+          "attachments": [],
+          "title": "",
+          "purpose": "",
+          "ui": {},
+          "role_text": "",
+          "task_text": "",
+          "execution_mode": "legacy"
+        },
+        {
+          "id": "summarize",
+          "name": "summarize",
+          "model": "o3-2025-04-16-gs-ae",
+          "prompt_version": "1",
+          "input_mapping": "analysis",
+          "output_mapping": "output",
+          "depends_on": [],
+          "enabled": true,
+          "attachments": [],
+          "title": "",
+          "purpose": "",
+          "ui": {},
+          "role_text": "",
+          "task_text": "",
+          "execution_mode": "legacy"
+        },
+        {
+          "id": "step_f782",
+          "name": "abc",
+          "model": "gpt-4-1-2025-04-14-gs-ae",
+          "prompt_version": "1",
+          "input_mapping": "input",
+          "output_mapping": "output",
+          "depends_on": [],
+          "enabled": true,
+          "attachments": [],
+          "title": "",
+          "purpose": "",
+          "ui": {},
+          "role_text": "",
+          "task_text": "",
+          "execution_mode": "legacy"
+        },
+        {
+          "id": "step_08ee",
+          "name": "xyz",
+          "model": "gpt-4-1-2025-04-14-gs-ae",
+          "prompt_version": "1",
+          "input_mapping": "input",
+          "output_mapping": "output",
+          "depends_on": [],
+          "enabled": true,
+          "attachments": [],
+          "title": "",
+          "purpose": "",
+          "ui": {},
+          "role_text": "",
+          "task_text": "",
+          "execution_mode": "legacy"
+        },
+        {
+          "id": "64dfdf28",
+          "name": "step_64dfdf28",
+          "model": "gpt-4-1-2025-04-14-gs-ae",
+          "prompt_version": "1",
+          "input_mapping": "input",
+          "output_mapping": "output",
+          "depends_on": [],
+          "enabled": true,
+          "attachments": [
+            {
+              "slot_id": "363a386a",
+              "variable_name": "claude",
+              "label": "File for claude",
+              "required": false,
+              "accepted_types": null
+            }
+          ],
+          "title": "",
+          "purpose": "",
+          "ui": {},
+          "role_text": "",
+          "task_text": "",
+          "execution_mode": "legacy"
+        },
+        {
+          "id": "8c82b5c0",
+          "name": "step_8c82b5c0",
+          "model": "gpt-4-1-2025-04-14-gs-ae",
+          "prompt_version": "1",
+          "input_mapping": "input",
+          "output_mapping": "output",
+          "depends_on": [],
+          "enabled": true,
+          "attachments": [],
+          "title": "",
+          "purpose": "",
+          "ui": {},
+          "role_text": "",
+          "task_text": "",
+          "execution_mode": "legacy"
+        },
+        {
+          "id": "4b1802ff",
+          "name": "abc",
+          "model": "gpt-4-1-2025-04-14-gs-ae",
+          "prompt_version": "1",
+          "input_mapping": "input",
+          "output_mapping": "output",
+          "depends_on": [],
+          "enabled": true,
+          "attachments": [],
+          "title": "",
+          "purpose": "",
+          "ui": {},
+          "role_text": "",
+          "task_text": "",
+          "execution_mode": "legacy"
+        },
+        {
+          "id": "c846ecb6",
+          "name": "abcd",
+          "model": "gpt-4-1-2025-04-14-gs-ae",
+          "prompt_version": "1",
+          "input_mapping": "input",
+          "output_mapping": "output",
+          "depends_on": [],
+          "enabled": true,
+          "attachments": [],
+          "title": "",
+          "purpose": "",
+          "ui": {},
+          "role_text": "",
+          "task_text": "",
+          "execution_mode": "legacy"
+        },
+        {
+          "id": "8ec09bf6",
+          "name": "xyz1",
+          "model": "gpt-4-1-2025-04-14-gs-ae",
+          "prompt_version": "1",
+          "input_mapping": "input",
+          "output_mapping": "output",
+          "depends_on": [],
+          "enabled": true,
+          "attachments": [
+            {
+              "slot_id": "70ed4572",
+              "variable_name": "claude",
+              "label": "File for claude",
+              "required": false,
+              "accepted_types": null
+            }
+          ],
+          "title": "",
+          "purpose": "",
+          "ui": {},
+          "role_text": "",
+          "task_text": "",
+          "execution_mode": "legacy"
+        }
+      ],
+      "schema_version": 3
+    },
+    {
+      "id": "graph_parallel_analysis",
+      "name": "Parallel Document Analysis",
+      "description": "Fan-out: split document into 3 parallel analysis steps",
+      "schema_version": 3,
+      "steps": [
+        {
+          "id": "split_doc",
+          "name": "split_doc",
+          "title": "Split Document",
+          "model": "gpt-4-1-2025-04-14-gs-ae",
+          "prompt_version": "1",
+          "execution_mode": "graph",
+          "role_text": "You are a document splitter. Divide the input into three equal logical sections.",
+          "task_text": "Split the following document into three parts. Output each as part1, part2, part3.",
+          "inputs": [
+            {
+              "name": "document",
+              "sources": [{"step_id": "__input__", "port": "input"}],
+              "required": true,
+              "join_strategy": "first"
+            }
+          ],
+          "outputs": [
+            {"name": "part1", "kind": "text", "exposed": true},
+            {"name": "part2", "kind": "text", "exposed": true},
+            {"name": "part3", "kind": "text", "exposed": true}
+          ]
+        },
+        {
+          "id": "analyze_1",
+          "name": "analyze_1",
+          "title": "Analyze Part 1",
+          "model": "gpt-4-1-2025-04-14-gs-ae",
+          "prompt_version": "1",
+          "execution_mode": "graph",
+          "role_text": "You are a document analyst. Identify key findings and risks.",
+          "task_text": "Analyze the following section and produce a concise report of key findings.",
+          "inputs": [
+            {
+              "name": "text",
+              "sources": [{"step_id": "split_doc", "port": "part1"}],
+              "required": true,
+              "join_strategy": "first"
+            }
+          ],
+          "outputs": [
+            {"name": "report", "kind": "text", "exposed": true}
+          ]
+        },
+        {
+          "id": "analyze_2",
+          "name": "analyze_2",
+          "title": "Analyze Part 2",
+          "model": "gpt-4-1-2025-04-14-gs-ae",
+          "prompt_version": "1",
+          "execution_mode": "graph",
+          "role_text": "You are a document analyst. Identify key findings and risks.",
+          "task_text": "Analyze the following section and produce a concise report of key findings.",
+          "inputs": [
+            {
+              "name": "text",
+              "sources": [{"step_id": "split_doc", "port": "part2"}],
+              "required": true,
+              "join_strategy": "first"
+            }
+          ],
+          "outputs": [
+            {"name": "report", "kind": "text", "exposed": true}
+          ]
+        },
+        {
+          "id": "analyze_3",
+          "name": "analyze_3",
+          "title": "Analyze Part 3",
+          "model": "gpt-4-1-2025-04-14-gs-ae",
+          "prompt_version": "1",
+          "execution_mode": "graph",
+          "role_text": "You are a document analyst. Identify key findings and risks.",
+          "task_text": "Analyze the following section and produce a concise report of key findings.",
+          "inputs": [
+            {
+              "name": "text",
+              "sources": [{"step_id": "split_doc", "port": "part3"}],
+              "required": true,
+              "join_strategy": "first"
+            }
+          ],
+          "outputs": [
+            {"name": "report", "kind": "text", "exposed": true}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "graph_multi_source_summary",
+      "name": "Multi-Source Summary",
+      "description": "Fan-in: merge 3 parallel drafts into single summary",
+      "schema_version": 3,
+      "steps": [
+        {
+          "id": "draft_1",
+          "name": "draft_1",
+          "title": "Draft 1",
+          "model": "gpt-4-1-2025-04-14-gs-ae",
+          "prompt_version": "1",
+          "execution_mode": "graph",
+          "role_text": "You are an expert writer.",
+          "task_text": "Write a concise draft on the topic provided via workflow input.",
+          "inputs": [
+            {
+              "name": "topic",
+              "sources": [{"step_id": "__input__", "port": "input"}],
+              "required": true,
+              "join_strategy": "first"
+            }
+          ],
+          "outputs": [
+            {"name": "draft", "kind": "text", "exposed": true}
+          ]
+        },
+        {
+          "id": "draft_2",
+          "name": "draft_2",
+          "title": "Draft 2",
+          "model": "gpt-4-1-2025-04-14-gs-ae",
+          "prompt_version": "1",
+          "execution_mode": "graph",
+          "role_text": "You are a creative writer.",
+          "task_text": "Write an alternative draft on the topic in a different tone.",
+          "inputs": [
+            {
+              "name": "topic",
+              "sources": [{"step_id": "__input__", "port": "input"}],
+              "required": true,
+              "join_strategy": "first"
+            }
+          ],
+          "outputs": [
+            {"name": "draft", "kind": "text", "exposed": true}
+          ]
+        },
+        {
+          "id": "draft_3",
+          "name": "draft_3",
+          "title": "Draft 3",
+          "model": "gpt-4-1-2025-04-14-gs-ae",
+          "prompt_version": "1",
+          "execution_mode": "graph",
+          "role_text": "You are a technical writer.",
+          "task_text": "Write a technical draft on the topic with precise language.",
+          "inputs": [
+            {
+              "name": "topic",
+              "sources": [{"step_id": "__input__", "port": "input"}],
+              "required": true,
+              "join_strategy": "first"
+            }
+          ],
+          "outputs": [
+            {"name": "draft", "kind": "text", "exposed": true}
+          ]
+        },
+        {
+          "id": "merger",
+          "name": "merger",
+          "title": "Merge & Summarize",
+          "model": "gpt-4-1-2025-04-14-gs-ae",
+          "prompt_version": "1",
+          "execution_mode": "graph",
+          "role_text": "You are a synthesis expert.",
+          "task_text": "Merge the following drafts into a single coherent summary that captures the best of each.",
+          "inputs": [
+            {
+              "name": "drafts",
+              "sources": [
+                {"step_id": "draft_1", "port": "draft"},
+                {"step_id": "draft_2", "port": "draft"},
+                {"step_id": "draft_3", "port": "draft"}
+              ],
+              "join_strategy": "concat",
+              "required": true
+            }
+          ],
+          "outputs": [
+            {"name": "summary", "kind": "text", "exposed": true}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "graph_structured_extraction",
+      "name": "Structured Output Extraction",
+      "description": "Multi-output: extract summary, risks, and actions from text",
+      "schema_version": 3,
+      "steps": [
+        {
+          "id": "extractor",
+          "name": "extractor",
+          "title": "Extract Fields",
+          "model": "gpt-4-1-2025-04-14-gs-ae",
+          "prompt_version": "1",
+          "execution_mode": "graph",
+          "role_text": "You are a structured data extractor.",
+          "task_text": "Extract summary, risks, and actions as separate JSON fields.",
+          "inputs": [
+            {
+              "name": "raw_text",
+              "sources": [{"step_id": "__input__", "port": "input"}],
+              "required": true,
+              "join_strategy": "first"
+            }
+          ],
+          "outputs": [
+            {"name": "summary", "kind": "text", "exposed": true},
+            {"name": "risks", "kind": "json", "exposed": true},
+            {"name": "actions", "kind": "json", "exposed": true}
+          ]
+        },
+        {
+          "id": "formatter",
+          "name": "formatter",
+          "title": "Format Report",
+          "model": "gpt-4-1-2025-04-14-gs-ae",
+          "prompt_version": "1",
+          "execution_mode": "graph",
+          "role_text": "You are a report formatter.",
+          "task_text": "Format the extracted data into a clean, readable final report.",
+          "inputs": [
+            {
+              "name": "parsed_data",
+              "sources": [
+                {"step_id": "extractor", "port": "summary"},
+                {"step_id": "extractor", "port": "risks"},
+                {"step_id": "extractor", "port": "actions"}
+              ],
+              "join_strategy": "json_map",
+              "required": true
+            }
+          ],
+          "outputs": [
+            {"name": "final_report", "kind": "text", "exposed": true}
+          ]
+        }
+      ]
+    }
+  ]
+}

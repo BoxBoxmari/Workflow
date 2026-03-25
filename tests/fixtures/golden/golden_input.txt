@@ -1,0 +1,4 @@
+Analyze the following document and identify key findings.
+
+This is a golden test fixture for the Workflow MVP prompt rendering regression tests.
+It should remain stable and simple.

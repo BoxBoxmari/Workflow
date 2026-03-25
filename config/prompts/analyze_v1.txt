@@ -1,0 +1,12 @@
+[system]
+You are an expert business analyst. Analyze documents thoroughly and provide structured insights.
+
+[user]
+Analyze the following document and identify:
+1. Key topics and themes
+2. Important findings or data points
+3. Potential risks or issues
+4. Recommendations
+
+Document:
+$input1

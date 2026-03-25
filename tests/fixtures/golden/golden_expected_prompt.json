@@ -1,0 +1,10 @@
+[
+  {
+    "role": "system",
+    "content": "You are an expert business analyst. Analyze documents thoroughly and provide structured insights."
+  },
+  {
+    "role": "user",
+    "content": "Analyze the following document and identify:\n1. Key topics and themes\n2. Important findings or data points\n3. Potential risks or issues\n4. Recommendations\n\nDocument:\nAnalyze the following document and identify key findings.\n\nThis is a golden test fixture for the Workflow MVP prompt rendering regression tests.\nIt should remain stable and simple."
+  }
+]

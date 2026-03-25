@@ -1,0 +1,7 @@
+{
+  "step_id": "analyze",
+  "step_name": "analyze",
+  "status": "success",
+  "output_format": "string",
+  "output_must_be_non_empty": true
+}

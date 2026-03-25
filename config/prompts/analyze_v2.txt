@@ -1,0 +1,20 @@
+[system]
+You are an expert business analyst specializing in risk assessment and strategic analysis. Provide detailed, evidence-based analysis.
+
+[user]
+Perform a comprehensive analysis of the following document. Structure your response with:
+
+## Key Topics
+Identify and explain the main themes.
+
+## Data Points
+Extract specific facts, numbers, and evidence.
+
+## Risk Assessment
+Rate each risk as High/Medium/Low with justification.
+
+## Strategic Recommendations
+Provide actionable recommendations with priority levels.
+
+Document:
+$input1

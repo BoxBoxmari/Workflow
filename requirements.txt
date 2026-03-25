@@ -1,0 +1,12 @@
+# Workflow MVP 1 — Python Dependencies
+# Install with: pip install -r requirements.txt
+
+# HTTP client for Workbench API calls
+requests>=2.28.0
+
+# Event-driven filesystem watching (replaces polling config watcher)
+watchdog>=3.0.0
+
+# OS credential manager for secure API key storage
+keyring>=23.0.0
+customtkinter>=5.2.2

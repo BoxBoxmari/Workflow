@@ -1,0 +1,44 @@
+[
+  {
+    "id": "gpt-4o-2024-08-06-gs-ae",
+    "name": "GPT-4o (Aug 2024)",
+    "capabilities": ["chat", "vision"],
+    "family": "gpt-4o"
+  },
+  {
+    "id": "gpt-4-1-2025-04-14-gs-ae",
+    "name": "GPT-4.1 (Apr 2025)",
+    "capabilities": ["chat"],
+    "family": "gpt-4"
+  },
+  {
+    "id": "gpt-4-1-mini-2025-04-14-gs-ae",
+    "name": "GPT-4.1 Mini",
+    "capabilities": ["chat"],
+    "family": "gpt-4"
+  },
+  {
+    "id": "o3-2025-04-16-gs-ae",
+    "name": "o3 (Apr 2025)",
+    "capabilities": ["chat"],
+    "family": "o-series"
+  },
+  {
+    "id": "o4-mini-2025-04-16-gs-ae",
+    "name": "o4 Mini",
+    "capabilities": ["chat"],
+    "family": "o-series"
+  },
+  {
+    "id": "gpt-5-2025-08-07-gs-ae",
+    "name": "GPT-5 (Aug 2025)",
+    "capabilities": ["chat", "vision"],
+    "family": "gpt-5"
+  },
+  {
+    "id": "gpt-5-mini-2025-08-07-gs-ae",
+    "name": "GPT-5 Mini",
+    "capabilities": ["chat"],
+    "family": "gpt-5"
+  }
+]

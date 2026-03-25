@@ -1,0 +1,60 @@
+# User Manual — Workflow MVP Validation Workbench
+
+This guide explains how to use the AI Workflow Validation Workbench to test, compare, and audit sequential AI workflows locally.
+
+## 1. Setup & Launch
+
+Before using the tool, ensure you have:
+
+1. **Python 3.10+** and the `requests` library installed.
+2. **Provider Config**: Create `config/provider.json` with your API credentials (even if you cannot call it currently, the UI requires the file or a placeholder to enable certain controls).
+3. **Launch**: Execute `python main.py` from the root directory.
+
+## 2. Core Workflow Operations
+
+### Loading a Workflow
+
+- By default, the tool scans `config/workflows.json`.
+- Selecting a workflow from the **Workflow Panel** (left) will populate the step sequence in the main list.
+
+### Running a Workflow
+
+- Click the **[Run]** button to execute steps sequentially.
+- **Note**: Since you cannot call the Workbench API currently, runs will fail at the first API step. You can still use the UI to inspect local history and ingested files.
+
+## 3. Comparing Models & Prompts
+
+The **Compare** menu allows side-by-side evaluation:
+
+- **Compare Models**: Select a step, then choose multiple models (e.g., `gpt-4o`, `gpt-4-turbo`) to see how outputs differ for the same input and prompt.
+- **Compare Prompts**: Test different versions of a prompt template (e.g., `v1` vs `v2`) on the same model and input.
+
+## 4. File Ingestion for Testing
+
+Use the **Select File** button to load external data into the workflow input:
+
+- **Supported (Tier 1)**: `.txt`, `.json`, `.xml`, `.csv`. These are normalized with high fidelity.
+- **Best-effort (Tier 2)**: `.docx`, `.xlsx`, `.pptx`. The tool extracts raw text using standard library parsing. Formatting and images are ignored.
+- The normalized content appears in the **Input** tab of the Detail Panel.
+
+## 5. Inspection & Traceability
+
+After a run (or when loading from history), use the **Detail Panel** (center) tabs:
+
+- **Input**: The text sent to the model.
+- **Prompt**: The final rendered prompt including system instructions and variables.
+- **Output**: The plain text response from the AI.
+- **Raw**: The full JSON payload from the Workbench API provider.
+- **Metrics**: Latency, token usage, and status metadata.
+
+## 6. History & Audit
+
+- All runs are saved locally to the `runs/` directory.
+- Use the **History Panel** (bottom) to browse past results.
+- Clicking a run in the history list reloads all step data and artifacts for back-testing or stakeholder review.
+
+## 7. Configuration & Customization
+
+- **Workflows**: Modify `config/workflows.json` to define step names, models, and variable mappings.
+- **Prompts**: Add `.txt` files to `config/prompts/` using the naming convention `{step_name}_v{version}.txt`.
+- **Formatting**: Prompts support `$variable` substitution using standard Python string templates.
