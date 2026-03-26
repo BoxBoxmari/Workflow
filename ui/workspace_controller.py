@@ -250,6 +250,19 @@ class WorkspaceController:
         self.state.run_step_results[res.step_id] = res
         return True
 
+    @staticmethod
+    def _events_by_step(events: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        for ev in events:
+            step_id = str(ev.get("step_id") or "").strip()
+            if not step_id:
+                continue
+            normalized = dict(ev)
+            if "type" not in normalized and "event_type" in normalized:
+                normalized["type"] = normalized["event_type"]
+            grouped.setdefault(step_id, []).append(normalized)
+        return grouped
+
     def _reduce_run_ended(self) -> None:
         self.state.is_running = False
         self.state.drawer_visible = True
@@ -711,11 +724,81 @@ class WorkspaceController:
         log.debug("Attachment binding: %s → %s", variable_name, file_path)
         self._notify()
 
+    def attach_files_to_slot(
+        self, step_id: str, slot_key: str, file_paths: list[str]
+    ) -> int:
+        """
+        Bind one or many files starting from a selected slot.
+
+        First file binds to the selected slot. Remaining files create new slots
+        on the same step and bind one file per slot.
+        """
+        paths = [str(p).strip() for p in file_paths if str(p).strip()]
+        if not paths:
+            return 0
+        step = self.state.get_step_by_id(step_id)
+        if not step or "::" not in slot_key:
+            return 0
+        key_step_id, _ = slot_key.split("::", 1)
+        if key_step_id != step_id:
+            return 0
+
+        self.state.attachment_bindings[slot_key] = paths[0]
+        bound_count = 1
+
+        used_vars = {s.variable_name for s in step.attachments}
+        for path in paths[1:]:
+            filename = Path(path).name
+            stem = Path(path).stem
+            base = re.sub(r"[^a-zA-Z0-9_]+", "_", stem).strip("_").lower() or "file"
+            variable_name = f"{step_id}_{base}"
+            idx = 2
+            while variable_name in used_vars:
+                variable_name = f"{step_id}_{base}_{idx}"
+                idx += 1
+            used_vars.add(variable_name)
+
+            slot_id = self.add_attachment_slot(
+                step_id,
+                label=filename,
+                required=False,
+                variable_name=variable_name,
+            )
+            if not slot_id:
+                continue
+            self.state.attachment_bindings[f"{step_id}::{slot_id}"] = path
+            bound_count += 1
+
+        self.state.is_dirty = True
+        self._notify()
+        return bound_count
+
     def remove_attachment_binding(self, variable_name: str) -> None:
         """Remove a file binding for variable_name."""
         self.state.attachment_bindings.pop(variable_name, None)
         self.state.is_dirty = True
         self._notify()
+
+    def delete_attached_file(
+        self, slot_key: str, *, remove_binding: bool = True
+    ) -> bool:
+        """
+        Delete physical file currently bound to a slot key.
+
+        Returns True if a file was deleted, False otherwise.
+        """
+        path = self.state.attachment_bindings.get(slot_key)
+        if not path:
+            return False
+        try:
+            p = Path(path)
+            if p.is_file():
+                p.unlink()
+        except OSError:
+            return False
+        if remove_binding:
+            self.remove_attachment_binding(slot_key)
+        return True
 
     @staticmethod
     def _normalize_attachment_accepted_types(
@@ -1023,6 +1106,7 @@ class WorkspaceController:
         attachment_meta: dict[str, dict[str, Any]] = {}
         pending_attachment_ingest_events: list[dict[str, Any]] = []
         missing_required = []
+        ingest_errors = []
         for step in wf.steps:
             for slot in step.attachments:
                 slot_key = f"{step.id}::{slot.slot_id}"
@@ -1075,7 +1159,11 @@ class WorkspaceController:
                         }
                     )
                     if not res.ok:
-                        return False  # Or handle error appropriately
+                        ingest_errors.append(
+                            "Step "
+                            f"'{step.title or step.id}': "
+                            f"failed to read attachment {slot.label}"
+                        )
 
         if missing_required:
             log.warning(
@@ -1086,6 +1174,13 @@ class WorkspaceController:
                 "Missing Attachments",
                 "Cannot run workflow. Please attach the following required files:\n\n"
                 + "\n".join(f"  • {m}" for m in missing_required),
+            )
+            return False
+        if ingest_errors:
+            dialogs.show_error(
+                "Attachment Error",
+                "Cannot run workflow due to attachment read failures:\n\n"
+                + "\n".join(f"  • {m}" for m in ingest_errors),
             )
             return False
 
@@ -1258,7 +1353,16 @@ class WorkspaceController:
 
     def _handle_step_finished(self, event: Any) -> None:
         """Executed on main thread when a step completes."""
-        if self._reduce_step_finished(event.get("result")):
+        res = event.get("result")
+        run_id = event.get("run_id")
+        if res and run_id:
+            try:
+                grouped = self._events_by_step(self.storage.load_events(run_id))
+                res.node_events = grouped.get(res.step_id, [])
+            except Exception:
+                # Never fail run rendering due to event hydration issues.
+                pass
+        if self._reduce_step_finished(res):
             self._notify()
 
     def _handle_run_finished(self, event: Any) -> None:
@@ -1307,6 +1411,12 @@ class WorkspaceController:
             self.storage.load_run(run_id)
             steps = self.storage.load_all_steps(run_id)
             step_results = {sr.step_id: sr for sr in steps}
+            try:
+                grouped = self._events_by_step(self.storage.load_events(run_id))
+                for step_id, sr in step_results.items():
+                    sr.node_events = grouped.get(step_id, sr.node_events or [])
+            except Exception:
+                pass
         except Exception:
             step_results = {}
         self._reduce_run_selected(run_id, step_results)

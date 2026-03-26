@@ -1126,6 +1126,14 @@ class InspectorPanel(ctk.CTkFrame):
                     fg_color=T.CLR_SURFACE,
                     hover_color=T.CLR_BORDER,
                 ).pack(side=tk.RIGHT)
+                ctk.CTkButton(
+                    file_row,
+                    text="Delete file",
+                    command=lambda k=slot_key: self._delete_attachment_file(k),
+                    width=80,
+                    fg_color=T.CLR_SURFACE,
+                    hover_color=T.CLR_BORDER,
+                ).pack(side=tk.RIGHT, padx=(0, 5))
             else:
                 ctk.CTkButton(
                     file_row,
@@ -1176,20 +1184,27 @@ class InspectorPanel(ctk.CTkFrame):
         """Open file picker and attach file to the given slot."""
         if not self._current_step_id:
             return
-        path = filedialog.askopenfilename(
-            title="Attach file to this step",
+        paths = filedialog.askopenfilenames(
+            title="Attach file(s) to this step",
             filetypes=[
                 ("Documents", "*.pdf *.docx *.txt *.md *.csv *.xlsx *.pptx"),
                 ("All files", "*.*"),
             ],
         )
-        if path:
-            self.ctrl.update_attachment_binding(slot_key, path)
+        if paths:
+            if "::" in slot_key:
+                step_id, _ = slot_key.split("::", 1)
+                self.ctrl.attach_files_to_slot(step_id, slot_key, list(paths))
             self._refresh_att_badge()
 
     def _remove_attachment(self, slot_key: str) -> None:
         """Remove attachment binding and refresh badge."""
         self.ctrl.remove_attachment_binding(slot_key)
+        self._refresh_att_badge()
+
+    def _delete_attachment_file(self, slot_key: str) -> None:
+        """Delete bound file from disk and refresh badge."""
+        self.ctrl.delete_attached_file(slot_key, remove_binding=True)
         self._refresh_att_badge()
 
     def _add_attachment_slot(self, step_id: str) -> None:

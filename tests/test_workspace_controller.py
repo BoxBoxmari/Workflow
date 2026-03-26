@@ -263,6 +263,48 @@ def test_update_attachment_slot_rejects_empty_variable_name():
     assert ctrl.state.attachment_bindings[key] == "/tmp/source.pdf"
 
 
+def test_attach_files_to_slot_binds_all_and_creates_extra_slots(tmp_path):
+    ctrl = make_mock_ctrl()
+    step = StepDef(
+        id="s1",
+        name="step1",
+        model="gpt",
+        prompt_version="1",
+        execution_mode="graph",
+        attachments=[
+            AttachmentSlot(
+                slot_id="fileA",
+                variable_name="input_file",
+                label="Input file",
+                required=False,
+            )
+        ],
+    )
+    wf = WorkflowDef(id="w1", name="WF", steps=[step])
+    ctrl.state.workflow_drafts["w1"] = wf
+    ctrl.state.selected_workflow_id = "w1"
+
+    f1 = tmp_path / "first.pdf"
+    f2 = tmp_path / "second.docx"
+    f3 = tmp_path / "second copy.docx"
+    f1.write_text("1", encoding="utf-8")
+    f2.write_text("2", encoding="utf-8")
+    f3.write_text("3", encoding="utf-8")
+
+    bound = ctrl.attach_files_to_slot(
+        "s1",
+        "s1::fileA",
+        [str(f1), str(f2), str(f3)],
+    )
+
+    assert bound == 3
+    assert ctrl.state.attachment_bindings["s1::fileA"] == str(f1)
+    assert len(step.attachments) == 3
+    assert len(ctrl.state.attachment_bindings) == 3
+    assert any(slot.label == "second.docx" for slot in step.attachments)
+    assert any(slot.label == "second copy.docx" for slot in step.attachments)
+
+
 def test_add_step_below_creates_graph_ready_step():
     ctrl = make_mock_ctrl()
     ctrl.config_service.load_models.return_value = ["gpt-test"]

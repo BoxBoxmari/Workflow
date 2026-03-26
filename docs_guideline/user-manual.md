@@ -70,6 +70,19 @@ This allows you to trace both:
 1. when an attachment was successfully (or unsuccessfully) ingested, and
 2. which step actually consumed the ingested attachment variable at execution time.
 
+### Attachment management in UI
+
+- Both **Simple mode** (Flow Canvas modal) and **Advanced mode** (Inspector attachments) support selecting **multiple files** in one action.
+- First selected file is bound to the current slot; additional files are auto-bound by creating new slots on the same step.
+- A **Delete file** action is available in both modes and removes the physical file binding from the slot.
+
+### Events tab behavior
+
+- The **Events** tab now hydrates events for:
+  - live runs while steps complete, and
+  - historical runs loaded from Run History.
+- If events exist in `runs/<run_id>/events.jsonl`, step results will no longer show false `"No events recorded"` for those steps.
+
 ## 7. Configuration & Customization
 
 - **Workflows**: Modify `config/workflows.json` to define step names, models, and variable mappings.

@@ -732,6 +732,16 @@ class FlowCanvas(ctk.CTkFrame):
                             k, m, s
                         ),
                     ).pack(side=tk.RIGHT)
+                    ctk.CTkButton(
+                        file_row,
+                        text="Delete file",
+                        width=84,
+                        fg_color=T.CLR_BG,
+                        hover_color=T.CLR_BORDER,
+                        command=lambda k=slot_key, m=modal, s=step_id: self._delete_file_and_refresh(
+                            k, m, s
+                        ),
+                    ).pack(side=tk.RIGHT, padx=(0, T.PAD_XS))
                 else:
                     ctk.CTkButton(
                         file_row,
@@ -776,17 +786,24 @@ class FlowCanvas(ctk.CTkFrame):
         self, slot_key: str, modal: ctk.CTkToplevel, step_id: str
     ) -> None:
         """Open file picker from modal, bind file, then refresh modal."""
-        path = filedialog.askopenfilename(
+        paths = filedialog.askopenfilenames(
             parent=modal,
-            title="Attach file to this step",
+            title="Attach file(s) to this step",
             filetypes=[
                 ("Documents", "*.pdf *.docx *.txt *.md *.csv *.xlsx *.pptx"),
                 ("All files", "*.*"),
             ],
         )
-        if path:
-            self.ctrl.update_attachment_binding(slot_key, path)
+        if paths:
+            self.ctrl.attach_files_to_slot(step_id, slot_key, list(paths))
             self._build_modal_content(modal, step_id)
+
+    def _delete_file_and_refresh(
+        self, slot_key: str, modal: ctk.CTkToplevel, step_id: str
+    ) -> None:
+        """Delete bound file from disk and remove its binding."""
+        self.ctrl.delete_attached_file(slot_key, remove_binding=True)
+        self._build_modal_content(modal, step_id)
 
     def _add_slot_and_refresh(self, modal: ctk.CTkToplevel, step_id: str) -> None:
         self.ctrl.add_attachment_slot(step_id)
