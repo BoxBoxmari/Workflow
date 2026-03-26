@@ -141,6 +141,20 @@ Skip Tkinter-dependent UI tests in CI:
 python -m pytest tests/ --ignore=tests/test_ui_smoke.py -v
 ```
 
+## Run Event Logging
+
+Each run writes audit events to `runs/<run_id>/events.jsonl`.
+
+For attachment traceability, two explicit event types are emitted:
+
+- `attachment_ingested`
+  - `run_id`, `step_id`, `slot_id`, `variable_name`
+  - `file_path`, `size_bytes`, `sha256`
+  - `status` (`ok` or `error`) and optional `error`
+- `attachment_consumed_by_step`
+  - `run_id`, `step_id`, `variable_name`, `source_file_sha256`
+  - optional `slot_id`
+
 ## Development Scripts
 
 - `generate_examples.py`: tạo workflow mẫu graph trong thư mục `examples/`.

@@ -13,6 +13,8 @@ import logging
 import re
 import threading
 import uuid
+import hashlib
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -26,7 +28,7 @@ from core.commands import (
 )
 from core.config_service import ConfigService
 from core.enums import DrawerTab, WorkspaceMode, WorkspaceView
-from core.events import EventBus, external_change_detected
+from core.events import EventBus, external_change_detected, attachment_ingested
 from core.models import (
     StepDef,
     StepResult,
@@ -999,6 +1001,8 @@ class WorkspaceController:
 
         # Phase 2 & 7: Validate Required Attachments
         variables: dict[str, Any] = {}
+        attachment_meta: dict[str, dict[str, Any]] = {}
+        pending_attachment_ingest_events: list[dict[str, Any]] = []
         missing_required = []
         for step in wf.steps:
             for slot in step.attachments:
@@ -1014,9 +1018,44 @@ class WorkspaceController:
                     from core.ingestion import ingest_file
 
                     res = ingest_file(path)
+                    file_sha256 = ""
+                    size_bytes = 0
+                    status = "ok"
+                    error_msg: str | None = None
+                    try:
+                        file_bytes = Path(path).read_bytes()
+                        file_sha256 = hashlib.sha256(file_bytes).hexdigest()
+                        size_bytes = len(file_bytes)
+                    except Exception:
+                        status = "error"
+                        error_msg = "Unable to read file for digest"
                     if res.ok:
                         variables[slot.variable_name] = res.content
+                        attachment_meta[slot.variable_name] = {
+                            "slot_id": slot.slot_id,
+                            "step_id": step.id,
+                            "sha256": file_sha256,
+                            "file_path": path,
+                            "size_bytes": size_bytes,
+                        }
                     else:
+                        status = "error"
+                        error_msg = res.error or "ingest_failed"
+                    pending_attachment_ingest_events.append(
+                        {
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "event_type": "attachment_ingested",
+                            "step_id": step.id,
+                            "slot_id": slot.slot_id,
+                            "variable_name": slot.variable_name,
+                            "file_path": path,
+                            "size_bytes": size_bytes,
+                            "sha256": file_sha256,
+                            "status": status,
+                            "error": error_msg,
+                        }
+                    )
+                    if not res.ok:
                         return False  # Or handle error appropriately
 
         if missing_required:
@@ -1037,6 +1076,26 @@ class WorkspaceController:
         self._reduce_run_prepared_for_start()
         self._notify()
 
+        def _on_run_start_with_attachment_events(run_ctx: RunContext) -> None:
+            for ev in pending_attachment_ingest_events:
+                payload = dict(ev)
+                payload["run_id"] = run_ctx.run_id
+                self.storage.append_event(run_ctx.run_id, payload)
+                if self.event_bus:
+                    self.event_bus.publish(
+                        attachment_ingested(
+                            run_id=run_ctx.run_id,
+                            step_id=payload["step_id"],
+                            slot_id=payload["slot_id"],
+                            variable_name=payload["variable_name"],
+                            file_path=payload["file_path"],
+                            size_bytes=payload["size_bytes"],
+                            sha256=payload["sha256"],
+                            status=payload["status"],
+                            error=payload.get("error"),
+                        )
+                    )
+
         if engine_mode == "graph":
             from core.async_graph_runner import AsyncGraphRunner
 
@@ -1047,6 +1106,8 @@ class WorkspaceController:
                 workflow_def=wf,
                 initial_input=self.state.manual_input,
                 initial_variables=variables,
+                on_run_start=_on_run_start_with_attachment_events,
+                attachment_meta=attachment_meta,
             )
         else:
             self.runner = WorkflowRunner(
@@ -1061,6 +1122,8 @@ class WorkspaceController:
                 workflow_def=wf,
                 initial_input=self.state.manual_input,
                 initial_variables=variables,
+                on_run_start=_on_run_start_with_attachment_events,
+                attachment_meta=attachment_meta,
             )
 
         return True

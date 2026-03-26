@@ -104,6 +104,50 @@ def external_change_detected(path: str) -> Event:
     return Event("external_change_detected", {"path": path})
 
 
+def attachment_ingested(
+    run_id: str,
+    step_id: str,
+    slot_id: str,
+    variable_name: str,
+    file_path: str,
+    size_bytes: int,
+    sha256: str,
+    status: str,
+    error: str | None = None,
+) -> Event:
+    payload = {
+        "run_id": run_id,
+        "step_id": step_id,
+        "slot_id": slot_id,
+        "variable_name": variable_name,
+        "file_path": file_path,
+        "size_bytes": size_bytes,
+        "sha256": sha256,
+        "status": status,
+    }
+    if error:
+        payload["error"] = error
+    return Event("attachment_ingested", payload)
+
+
+def attachment_consumed_by_step(
+    run_id: str,
+    step_id: str,
+    variable_name: str,
+    source_file_sha256: str,
+    slot_id: str | None = None,
+) -> Event:
+    payload = {
+        "run_id": run_id,
+        "step_id": step_id,
+        "variable_name": variable_name,
+        "source_file_sha256": source_file_sha256,
+    }
+    if slot_id:
+        payload["slot_id"] = slot_id
+    return Event("attachment_consumed_by_step", payload)
+
+
 # ---------------------------------------------------------------------------
 # Event Bus
 # ---------------------------------------------------------------------------

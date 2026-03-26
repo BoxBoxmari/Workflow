@@ -175,13 +175,38 @@ class TestEndToEnd(unittest.TestCase):
 
         # 4. Run workflow
         runner = WorkflowRunner(client, registry, storage)
-        ctx = runner.run(wf, initial_input="noop", initial_variables=initial_vars)
+        attachment_meta = {
+            "attachment_content_step1_fileA": {
+                "slot_id": "fileA",
+                "step_id": "step1",
+                "sha256": "test-sha256",
+                "file_path": str(attach_file),
+                "size_bytes": len(attach_file.read_bytes()),
+            }
+        }
+        ctx = runner.run(
+            wf,
+            initial_input="noop",
+            initial_variables=initial_vars,
+            attachment_meta=attachment_meta,
+        )
 
         self.assertEqual(ctx.status, "success")
 
         # 5. Verify prompt received attachment content
         req = client.chat_completion.call_args[0][0]
         self.assertIn("Hello attachment data.", req.messages[0]["content"])
+
+        # 6. Verify attachment consumption event
+        events = storage.load_events(ctx.run_id)
+        consumed = [
+            e for e in events if e.get("event_type") == "attachment_consumed_by_step"
+        ]
+        self.assertEqual(len(consumed), 1)
+        self.assertEqual(consumed[0]["step_id"], "step1")
+        self.assertEqual(
+            consumed[0]["variable_name"], "attachment_content_step1_fileA"
+        )
 
 
 if __name__ == "__main__":

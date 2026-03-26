@@ -7,7 +7,7 @@ This guide explains how to use the AI Workflow Validation Workbench to test, com
 Before using the tool, ensure you have:
 
 1. **Python 3.10+** and the `requests` library installed.
-2. **Provider Config**: Create `config/provider.json` with your API credentials (even if you cannot call it currently, the UI requires the file or a placeholder to enable certain controls).
+2. **Provider Config**: Create `config/provider.json` with provider endpoint settings (`base_url`, `api_version`, `timeout`). API credentials are loaded from OS Credential Manager (`keyring`) or environment variables.
 3. **Launch**: Execute `python main.py` from the root directory.
 
 ## 2. Core Workflow Operations
@@ -52,6 +52,23 @@ After a run (or when loading from history), use the **Detail Panel** (center) ta
 - All runs are saved locally to the `runs/` directory.
 - Use the **History Panel** (bottom) to browse past results.
 - Clicking a run in the history list reloads all step data and artifacts for back-testing or stakeholder review.
+
+### Attachment audit events
+
+When attachment slots are used, the run event log (`runs/<run_id>/events.jsonl`) now emits two explicit event types:
+
+- `attachment_ingested`
+  - `run_id`, `step_id`, `slot_id`, `variable_name`
+  - `file_path`, `size_bytes`, `sha256`
+  - `status` (`ok` or `error`) and optional `error`
+- `attachment_consumed_by_step`
+  - `run_id`, `step_id`, `variable_name`, `source_file_sha256`
+  - optional `slot_id`
+
+This allows you to trace both:
+
+1. when an attachment was successfully (or unsuccessfully) ingested, and
+2. which step actually consumed the ingested attachment variable at execution time.
 
 ## 7. Configuration & Customization
 

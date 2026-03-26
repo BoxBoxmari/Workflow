@@ -268,6 +268,55 @@ class TestAsyncGraphRunner(unittest.TestCase):
         self.assertEqual(ctx.status, "cancelled")
         self.assertLess(len(ctx.step_results), 2)
 
+    def test_attachment_consumed_event_from_root_input(self):
+        wf = WorkflowDef(
+            id="wf_attach_graph",
+            name="Attach Graph WF",
+            steps=[
+                StepDef(
+                    id="s1",
+                    name="step1",
+                    model="m",
+                    prompt_version="1",
+                    execution_mode="graph",
+                    inputs=[
+                        InputPortDef(
+                            name="in",
+                            required=True,
+                            sources=[
+                                SourceRef(
+                                    step_id="workflow_input",
+                                    port="attachment_content_step1_fileA",
+                                )
+                            ],
+                        )
+                    ],
+                    outputs=[OutputPortDef(name="out")],
+                )
+            ],
+        )
+        ctx = self.runner.run(
+            wf,
+            initial_variables={
+                "attachment_content_step1_fileA": "hello attachment content"
+            },
+            attachment_meta={
+                "attachment_content_step1_fileA": {
+                    "slot_id": "fileA",
+                    "step_id": "s1",
+                    "sha256": "graph-test-sha256",
+                }
+            },
+        )
+        self.assertEqual(ctx.status, "success")
+        events = self.storage.load_events(ctx.run_id)
+        consumed = [
+            e for e in events if e.get("event_type") == "attachment_consumed_by_step"
+        ]
+        self.assertEqual(len(consumed), 1)
+        self.assertEqual(consumed[0]["step_id"], "s1")
+        self.assertEqual(consumed[0]["source_file_sha256"], "graph-test-sha256")
+
 
 if __name__ == "__main__":
     unittest.main()

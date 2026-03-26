@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+import json
 from datetime import datetime, timezone
 from typing import Callable, Optional, Any
 
@@ -21,6 +22,7 @@ from core.events import (
     step_finished,
     step_started,
     run_started,
+    attachment_consumed_by_step,
 )
 from core.models import (
     ProviderRequest,
@@ -63,6 +65,7 @@ class WorkflowRunner:
         workflow_def: WorkflowDef,
         initial_input: str = "",
         initial_variables: Optional[dict[str, Any]] = None,
+        attachment_meta: Optional[dict[str, dict[str, Any]]] = None,
         on_run_start: Optional[Callable[[RunContext], None]] = None,
         on_step_start: Optional[Callable[[StepDef, int, int], None]] = None,
         on_step_complete: Optional[Callable[[StepResult, int, int], None]] = None,
@@ -129,6 +132,7 @@ class WorkflowRunner:
         total = len(enabled_steps)
         # In-memory output cache for upstream injection (step_id → output_text)
         step_outputs: dict[str, str] = {}
+        attachment_meta = attachment_meta or {}
 
         try:
             for idx, step_def in enumerate(enabled_steps):
@@ -152,7 +156,11 @@ class WorkflowRunner:
                     )
 
                 step_result = self._execute_step(
-                    step_def, run_ctx, enabled_steps, step_outputs
+                    step_def,
+                    run_ctx,
+                    enabled_steps,
+                    step_outputs,
+                    attachment_meta,
                 )
                 run_ctx.step_results.append(step_def.id)
 
@@ -247,6 +255,7 @@ class WorkflowRunner:
         workflow_def: WorkflowDef,
         initial_input: str = "",
         initial_variables: Optional[dict[str, Any]] = None,
+        attachment_meta: Optional[dict[str, dict[str, Any]]] = None,
         on_run_start: Optional[Callable[[RunContext], None]] = None,
         on_step_start: Optional[Callable[[StepDef, int, int], None]] = None,
         on_step_complete: Optional[Callable[[StepResult, int, int], None]] = None,
@@ -255,7 +264,7 @@ class WorkflowRunner:
         """Start the workflow on a background thread. Returns the thread."""
         thread = threading.Thread(
             target=self.run,
-            args=(workflow_def, initial_input, initial_variables),
+            args=(workflow_def, initial_input, initial_variables, attachment_meta),
             kwargs={
                 "on_run_start": on_run_start,
                 "on_step_start": on_step_start,
@@ -277,6 +286,7 @@ class WorkflowRunner:
         run_ctx: RunContext,
         enabled_steps: list[StepDef],
         step_outputs: dict[str, str],  # in-memory: step_id → output_text
+        attachment_meta: dict[str, dict[str, Any]],
     ) -> StepResult:
         """Execute a single workflow step."""
         result = StepResult(
@@ -312,6 +322,35 @@ class WorkflowRunner:
         # Resolve input_text from run_ctx variables (legacy) or upstream cache
         input_text = run_ctx.variables.get(input_var, upstream_output)
         result.input_text = input_text
+        emitted_attachment_vars: set[str] = set()
+        if (
+            input_var
+            and input_var in attachment_meta
+            and isinstance(input_text, str)
+            and input_text.strip()
+        ):
+            meta = attachment_meta[input_var]
+            consumed_event = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "event_type": "attachment_consumed_by_step",
+                "run_id": run_ctx.run_id,
+                "step_id": step_def.id,
+                "variable_name": input_var,
+                "source_file_sha256": meta.get("sha256", ""),
+                "slot_id": meta.get("slot_id"),
+            }
+            self.storage.append_event(run_ctx.run_id, consumed_event)
+            if self.event_bus:
+                self.event_bus.publish(
+                    attachment_consumed_by_step(
+                        run_id=run_ctx.run_id,
+                        step_id=step_def.id,
+                        variable_name=input_var,
+                        source_file_sha256=meta.get("sha256", ""),
+                        slot_id=meta.get("slot_id"),
+                    )
+                )
+            emitted_attachment_vars.add(input_var)
 
         # --- Render prompt (Gap 2: no-code path vs legacy) ---
         try:
@@ -331,6 +370,37 @@ class WorkflowRunner:
                     {**run_ctx.variables, "input": input_text},
                 )
             result.rendered_prompt = messages
+            rendered_blob = json.dumps(messages, ensure_ascii=False)
+            for variable_name, meta in attachment_meta.items():
+                if variable_name in emitted_attachment_vars:
+                    continue
+                variable_value = run_ctx.variables.get(variable_name)
+                if (
+                    isinstance(variable_value, str)
+                    and variable_value.strip()
+                    and variable_value in rendered_blob
+                ):
+                    consumed_event = {
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "event_type": "attachment_consumed_by_step",
+                        "run_id": run_ctx.run_id,
+                        "step_id": step_def.id,
+                        "variable_name": variable_name,
+                        "source_file_sha256": meta.get("sha256", ""),
+                        "slot_id": meta.get("slot_id"),
+                    }
+                    self.storage.append_event(run_ctx.run_id, consumed_event)
+                    if self.event_bus:
+                        self.event_bus.publish(
+                            attachment_consumed_by_step(
+                                run_id=run_ctx.run_id,
+                                step_id=step_def.id,
+                                variable_name=variable_name,
+                                source_file_sha256=meta.get("sha256", ""),
+                                slot_id=meta.get("slot_id"),
+                            )
+                        )
+                    emitted_attachment_vars.add(variable_name)
         except FileNotFoundError as e:
             result.status = "error"
             result.error = str(e)

@@ -25,6 +25,7 @@ from core.events import (
     node_ready,
     node_blocked,
     port_emitted,
+    attachment_consumed_by_step,
 )
 from core.models import (
     ProviderRequest,
@@ -72,6 +73,7 @@ class AsyncGraphRunner:
         workflow_def: WorkflowDef,
         initial_input: str = "",
         initial_variables: Optional[dict[str, Any]] = None,
+        attachment_meta: Optional[dict[str, dict[str, Any]]] = None,
         on_run_start: Optional[Callable[[RunContext], None]] = None,
         on_step_start: Optional[Callable[[StepDef, int, int], None]] = None,
         on_step_complete: Optional[Callable[[StepResult, int, int], None]] = None,
@@ -85,6 +87,7 @@ class AsyncGraphRunner:
                 workflow_def,
                 initial_input,
                 initial_variables,
+                attachment_meta,
                 on_run_start,
                 on_step_start,
                 on_step_complete,
@@ -97,6 +100,7 @@ class AsyncGraphRunner:
         workflow_def: WorkflowDef,
         initial_input: str = "",
         initial_variables: Optional[dict[str, Any]] = None,
+        attachment_meta: Optional[dict[str, dict[str, Any]]] = None,
         on_run_start: Optional[Callable[[RunContext], None]] = None,
         on_step_start: Optional[Callable[[StepDef, int, int], None]] = None,
         on_step_complete: Optional[Callable[[StepResult, int, int], None]] = None,
@@ -105,7 +109,7 @@ class AsyncGraphRunner:
         """Start the graph execution on a background thread. Returns the thread."""
         thread = threading.Thread(
             target=self.run,
-            args=(workflow_def, initial_input, initial_variables),
+            args=(workflow_def, initial_input, initial_variables, attachment_meta),
             kwargs={
                 "on_run_start": on_run_start,
                 "on_step_start": on_step_start,
@@ -122,6 +126,7 @@ class AsyncGraphRunner:
         workflow_def: WorkflowDef,
         initial_input: str = "",
         initial_variables: Optional[dict[str, Any]] = None,
+        attachment_meta: Optional[dict[str, dict[str, Any]]] = None,
         on_run_start: Optional[Callable[[RunContext], None]] = None,
         on_step_start: Optional[Callable[[StepDef, int, int], None]] = None,
         on_step_complete: Optional[Callable[[StepResult, int, int], None]] = None,
@@ -182,6 +187,7 @@ class AsyncGraphRunner:
         node_states = {s.id: "pending" for s in enabled_steps}
         # In-memory output cache: step_id -> port_name -> output string
         port_outputs: dict[str, dict[str, str]] = {s.id: {} for s in enabled_steps}
+        attachment_meta = attachment_meta or {}
 
         semaphore = asyncio.Semaphore(self.max_concurrency)
         tasks: set[asyncio.Task] = set()
@@ -236,7 +242,7 @@ class AsyncGraphRunner:
 
                 try:
                     result = await self._execute_step_async(
-                        step_def, run_ctx, port_outputs
+                        step_def, run_ctx, port_outputs, attachment_meta
                     )
                 except Exception as e:
                     result = StepResult(
@@ -357,6 +363,7 @@ class AsyncGraphRunner:
         step_def: StepDef,
         run_ctx: RunContext,
         port_outputs: dict[str, dict[str, str]],
+        attachment_meta: dict[str, dict[str, Any]],
     ) -> StepResult:
         """
         Execute a single graph workflow step with join strategies.
@@ -371,6 +378,7 @@ class AsyncGraphRunner:
 
         # Fill input_data based on step_def.inputs and join strategies
         root_source_ids = {"__input__", "workflow_input", "$input"}
+        consumed_attachment_vars: set[str] = set()
         for p in step_def.inputs:
             resolved_values = []
             for src in p.sources:
@@ -410,6 +418,35 @@ class AsyncGraphRunner:
                 return result
 
             input_data[p.name] = joined_val
+            if isinstance(joined_val, str) and joined_val.strip():
+                for src in p.sources:
+                    if (
+                        src.step_id in root_source_ids
+                        and src.port in attachment_meta
+                        and src.port not in consumed_attachment_vars
+                    ):
+                        meta = attachment_meta[src.port]
+                        consumed_event = {
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "event_type": "attachment_consumed_by_step",
+                            "run_id": run_ctx.run_id,
+                            "step_id": step_def.id,
+                            "variable_name": src.port,
+                            "source_file_sha256": meta.get("sha256", ""),
+                            "slot_id": meta.get("slot_id"),
+                        }
+                        self.storage.append_event(run_ctx.run_id, consumed_event)
+                        if self.event_bus:
+                            self.event_bus.publish(
+                                attachment_consumed_by_step(
+                                    run_id=run_ctx.run_id,
+                                    step_id=step_def.id,
+                                    variable_name=src.port,
+                                    source_file_sha256=meta.get("sha256", ""),
+                                    slot_id=meta.get("slot_id"),
+                                )
+                            )
+                        consumed_attachment_vars.add(src.port)
 
         # Add global variable to context
         local_vars = {**run_ctx.variables, **input_data}
