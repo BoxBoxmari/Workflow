@@ -74,4 +74,5 @@ This allows you to trace both:
 
 - **Workflows**: Modify `config/workflows.json` to define step names, models, and variable mappings.
 - **Prompts**: Add `.txt` files to `config/prompts/` using the naming convention `{step_name}_v{version}.txt`.
+- **Prompt cleanup on save**: When a workflow is deleted and you save, prompt files that are no longer referenced by any workflow are automatically removed from `config/prompts/`.
 - **Formatting**: Prompts support `$variable` substitution using standard Python string templates.

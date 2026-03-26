@@ -439,3 +439,40 @@ def test_rename_workflow_missing_id_is_rejected():
     assert ok is False
     assert ctrl.state.is_dirty is False
     assert notify.call_count == 0
+
+
+def test_delete_workflow_then_save_cleans_orphan_prompt_files(controller):
+    old_step = StepDef(
+        id="old_s1",
+        name="old_step",
+        model="test-model-1",
+        prompt_version="1",
+        execution_mode="graph",
+    )
+    keep_step = StepDef(
+        id="keep_s1",
+        name="shared_step",
+        model="test-model-1",
+        prompt_version="1",
+        execution_mode="graph",
+    )
+    wf_old = WorkflowDef(id="wf_old", name="Old WF", steps=[old_step])
+    wf_keep = WorkflowDef(id="wf_keep", name="Keep WF", steps=[keep_step])
+
+    # Simulate persisted disk state before user deletes a workflow.
+    controller.config_service.save_workflows([wf_old, wf_keep])
+    controller.config_service.save_prompt("old_step", "1", "legacy prompt content")
+    controller.config_service.save_prompt("shared_step", "1", "shared prompt content")
+
+    # User session has both workflows loaded, then deletes one and saves.
+    controller.state.workflow_drafts = {"wf_old": wf_old, "wf_keep": wf_keep}
+    controller.state.selected_workflow_id = "wf_old"
+    controller.delete_workflow("wf_old")
+    ok, _ = controller.save()
+    assert ok is True
+
+    old_prompt_path = controller.config_service.registry.get_template_path("old_step", "1")
+    keep_prompt_path = controller.config_service.registry.get_template_path("shared_step", "1")
+
+    assert old_prompt_path.exists() is False
+    assert keep_prompt_path.exists() is True

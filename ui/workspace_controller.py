@@ -863,6 +863,16 @@ class WorkspaceController:
     # Save
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _collect_prompt_refs(workflows: list[WorkflowDef]) -> set[tuple[str, str]]:
+        """Collect (step_name, prompt_version) references from workflows."""
+        refs: set[tuple[str, str]] = set()
+        for wf in workflows:
+            for step in wf.steps:
+                if step.name and step.prompt_version:
+                    refs.add((step.name, step.prompt_version))
+        return refs
+
     def save(self) -> tuple[bool, str]:
         """Save all workflow drafts and prompt drafts to disk.
 
@@ -872,7 +882,10 @@ class WorkspaceController:
             return False, "Cannot save while a workflow is running."
 
         try:
+            persisted_workflows = self.config_service.load_workflows()
+            persisted_prompt_refs = self._collect_prompt_refs(persisted_workflows)
             workflows = list(self.state.workflow_drafts.values())
+            draft_prompt_refs = self._collect_prompt_refs(workflows)
             workflow_id_counts: dict[str, int] = {}
             for wf in workflows:
                 workflow_id_counts[wf.id] = workflow_id_counts.get(wf.id, 0) + 1
@@ -921,6 +934,12 @@ class WorkspaceController:
                 if step_id in step_meta:
                     name, version = step_meta[step_id]
                     self.config_service.save_prompt(name, version, content)
+
+            # Remove prompt files that were referenced before save but are no longer
+            # referenced by any workflow after save (e.g. workflow deletion).
+            orphan_prompt_refs = persisted_prompt_refs - draft_prompt_refs
+            for step_name, version in orphan_prompt_refs:
+                self.config_service.delete_prompt(step_name, version)
 
             self.state.is_dirty = False
             self.state.command_stack.clear()
