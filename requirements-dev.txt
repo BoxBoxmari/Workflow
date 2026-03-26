@@ -2,6 +2,7 @@
 -r requirements.txt
 
 flake8>=6.0.0
+ruff
 pytest>=7.0.0
 mypy>=1.8.0
 types-requests>=2.31.0

@@ -849,6 +849,9 @@ class WorkspaceController:
 
         try:
             workflows = list(self.state.workflow_drafts.values())
+            workflow_id_counts: dict[str, int] = {}
+            for wf in workflows:
+                workflow_id_counts[wf.id] = workflow_id_counts.get(wf.id, 0) + 1
 
             # Validate ALL workflow drafts before persisting any of them.
             # A single invalid workflow in the draft set blocks the entire save
@@ -863,7 +866,11 @@ class WorkspaceController:
             all_validation_errors: list[str] = []
             for wf_draft in workflows:
                 issues = validate_workflow(
-                    wf_draft, workflows, available_prompts, available_models
+                    wf_draft,
+                    workflows,
+                    available_prompts,
+                    available_models,
+                    workflow_id_counts=workflow_id_counts,
                 )
                 errors = [i for i in issues if i.level == "error"]
                 if errors:

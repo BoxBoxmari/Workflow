@@ -54,6 +54,22 @@ class TestStorageManager(unittest.TestCase):
         self.assertEqual(loaded.step_id, "s1")
         self.assertEqual(loaded.output_text, "result")
 
+    def test_save_step_uses_counter_and_increments(self):
+        rc = RunContext(run_id="test_run_003b")
+        self.storage.create_run(rc)
+
+        sr1 = StepResult(step_id="s1", step_name="step1", status="success")
+        sr2 = StepResult(step_id="s2", step_name="step2", status="success")
+        self.storage.save_step("test_run_003b", sr1)
+        self.storage.save_step("test_run_003b", sr2)
+
+        files = self.storage.list_step_files("test_run_003b")
+        self.assertEqual(files, ["step_01.json", "step_02.json"])
+
+        counter_path = self.storage._steps_dir("test_run_003b") / ".step_counter"
+        self.assertTrue(counter_path.is_file())
+        self.assertEqual(counter_path.read_text(encoding="utf-8").strip(), "2")
+
     def test_append_load_events(self):
         rc = RunContext(run_id="test_run_004")
         self.storage.create_run(rc)
@@ -100,6 +116,58 @@ class TestStorageManager(unittest.TestCase):
         runs = self.storage.list_runs()
         self.assertEqual(len(runs), 1)
         self.assertEqual(runs[0].status, "success")
+
+    def test_index_update_existing_preserves_ordering(self):
+        rc1 = RunContext(run_id="run_1", workflow_id="wf1", workflow_name="WF 1")
+        rc2 = RunContext(run_id="run_2", workflow_id="wf2", workflow_name="WF 2")
+        rc3 = RunContext(run_id="run_3", workflow_id="wf3", workflow_name="WF 3")
+
+        self.storage.create_run(rc1)
+        self.storage.update_index(rc1)
+        self.storage.create_run(rc2)
+        self.storage.update_index(rc2)
+        self.storage.create_run(rc3)
+        self.storage.update_index(rc3)
+        self.storage._write_queue.flush()
+
+        before = [r.run_id for r in self.storage.list_runs()]
+        self.assertEqual(before, ["run_1", "run_2", "run_3"])
+
+        # Update an existing run; it should NOT move to the end.
+        rc2.status = "success"
+        self.storage.update_index(rc2)
+        self.storage._write_queue.flush()
+
+        after = [r.run_id for r in self.storage.list_runs()]
+        self.assertEqual(after, ["run_1", "run_2", "run_3"])
+        runs = self.storage.list_runs()
+        self.assertEqual([r.status for r in runs if r.run_id == "run_2"][0], "success")
+
+    def test_compact_index_dedupes_latest_status_and_preserves_ordering(self):
+        rc1 = RunContext(run_id="run_x", status="running")
+        rc2 = RunContext(run_id="run_y", status="running")
+
+        self.storage.create_run(rc1)
+        self.storage.update_index(rc1)
+        self.storage.create_run(rc2)
+        self.storage.update_index(rc2)
+        self.storage._write_queue.flush()
+
+        # Append a few updates (duplicates in index.csv)
+        rc1.status = "success"
+        self.storage.update_index(rc1)
+        rc2.status = "error"
+        self.storage.update_index(rc2)
+        self.storage._write_queue.flush()
+
+        # Compact should rewrite to 1 row per run_id with latest status,
+        # keeping ordering by first appearance (run_x then run_y).
+        self.storage.compact_index()
+        runs = self.storage.list_runs()
+        self.assertEqual([r.run_id for r in runs], ["run_x", "run_y"])
+        statuses = {r.run_id: r.status for r in runs}
+        self.assertEqual(statuses["run_x"], "success")
+        self.assertEqual(statuses["run_y"], "error")
 
     def test_save_artifact(self):
         rc = RunContext(run_id="test_run_005")

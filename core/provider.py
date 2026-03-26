@@ -9,7 +9,7 @@ raw JSON for tracing.
 from __future__ import annotations
 
 import json
-from typing import Optional
+from typing import Any, Optional
 
 import requests
 
@@ -29,11 +29,13 @@ class WorkbenchClient:
         use_ntlm: bool = False,
         ntlm_user: Optional[str] = None,
         ntlm_password: Optional[str] = None,
+        model_overrides: Optional[dict[str, Any]] = None,
     ):
         self.base_url = base_url.rstrip("/")
         self.subscription_key = subscription_key
         self.charge_code = charge_code
         self.api_version = api_version
+        self.model_overrides = dict(model_overrides) if model_overrides else {}
         self.timeout = timeout
         self.use_ntlm = use_ntlm
         self.ntlm_user = ntlm_user
@@ -98,22 +100,37 @@ class WorkbenchClient:
                     "Migrate to OS Credential Manager via SecureCredentialStore.set_charge_code()."
                 )
 
+        default_ver = config.get("default_api_version") or config.get(
+            "api_version", "2024-06-01"
+        )
+        overrides = config.get("model_overrides") or {}
+
         return cls(
             base_url=config.get("base_url", ""),
             subscription_key=subscription_key,
             charge_code=charge_code,
-            api_version=config.get("api_version", "2024-06-01"),
+            api_version=default_ver,
             timeout=config.get("timeout", 300),
             use_ntlm=config.get("use_ntlm", False),
             ntlm_user=config.get("ntlm_user"),
             ntlm_password=config.get("ntlm_password"),
+            model_overrides=overrides,
         )
+
+    def _api_version_for_model(self, model: str) -> str:
+        entry = self.model_overrides.get(model)
+        if isinstance(entry, dict):
+            ver = entry.get("api_version")
+            if ver:
+                return str(ver)
+        return self.api_version
 
     def _build_url(self, model: str) -> str:
         """Construct the chat completions endpoint URL."""
+        ver = self._api_version_for_model(model)
         return (
             f"{self.base_url}/deployments/{model}/chat/completions"
-            f"?api-version={self.api_version}"
+            f"?api-version={ver}"
         )
 
     def chat_completion(self, req: ProviderRequest) -> ProviderResponse:

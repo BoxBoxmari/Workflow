@@ -31,13 +31,17 @@ def validate_workflow(
     all_workflows: list[WorkflowDef],
     available_prompts: dict[str, list[str]],
     available_models: list[str] | None = None,
+    workflow_id_counts: dict[str, int] | None = None,
 ) -> list[ValidationIssue]:
     """Validate a single workflow definition against global state."""
     issues: list[ValidationIssue] = []
 
     # Check duplicate workflow ID
-    for other in all_workflows:
-        if other.id == workflow.id and other is not workflow:
+    if workflow_id_counts is not None:
+        # Precomputed duplicate detection reduces per-call cost from O(W) scan
+        # to O(1) lookup; if this workflow id appears >1 time in the draft set,
+        # it implies duplicates exist.
+        if workflow_id_counts.get(workflow.id, 0) > 1:
             issues.append(
                 ValidationIssue(
                     "error",
@@ -45,6 +49,16 @@ def validate_workflow(
                     f"Duplicate workflow ID '{workflow.id}' found.",
                 )
             )
+    else:
+        for other in all_workflows:
+            if other.id == workflow.id and other is not workflow:
+                issues.append(
+                    ValidationIssue(
+                        "error",
+                        "workflow",
+                        f"Duplicate workflow ID '{workflow.id}' found.",
+                    )
+                )
 
     if not workflow.steps:
         issues.append(

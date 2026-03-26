@@ -1,7 +1,19 @@
 [
   {
     "id": "gpt-4o-2024-08-06-gs-ae",
-    "name": "GPT-4o (Aug 2024)",
+    "name": "GPT-4o (Aug 2024, GS)",
+    "capabilities": ["chat", "vision"],
+    "family": "gpt-4o"
+  },
+  {
+    "id": "gpt-4o-2024-11-20-std-ae",
+    "name": "GPT-4o (Nov 2024, STD)",
+    "capabilities": ["chat", "vision"],
+    "family": "gpt-4o"
+  },
+  {
+    "id": "gpt-4o-mini-2024-07-18-gs-ae",
+    "name": "GPT-4o Mini (Jul 2024)",
     "capabilities": ["chat", "vision"],
     "family": "gpt-4o"
   },
@@ -14,6 +26,12 @@
   {
     "id": "gpt-4-1-mini-2025-04-14-gs-ae",
     "name": "GPT-4.1 Mini",
+    "capabilities": ["chat"],
+    "family": "gpt-4"
+  },
+  {
+    "id": "gpt-4-1-nano-2025-04-14-gs-ae",
+    "name": "GPT-4.1 Nano",
     "capabilities": ["chat"],
     "family": "gpt-4"
   },
@@ -40,5 +58,35 @@
     "name": "GPT-5 Mini",
     "capabilities": ["chat"],
     "family": "gpt-5"
+  },
+  {
+    "id": "gpt-5-nano-2025-08-07-gs-ae",
+    "name": "GPT-5 Nano",
+    "capabilities": ["chat"],
+    "family": "gpt-5"
+  },
+  {
+    "id": "gpt-5-1-2025-11-13-gs-ae",
+    "name": "GPT-5.1 (Nov 2025)",
+    "capabilities": ["chat"],
+    "family": "gpt-5"
+  },
+  {
+    "id": "gpt-5-1-chat-2025-11-13-gs-ae",
+    "name": "GPT-5.1 Chat (Nov 2025)",
+    "capabilities": ["chat"],
+    "family": "gpt-5"
+  },
+  {
+    "id": "text-embedding-3-large-1-std-ae",
+    "name": "text-embedding-3-large",
+    "capabilities": ["embeddings"],
+    "family": "embedding"
+  },
+  {
+    "id": "text-embedding-3-small-1-std-ae",
+    "name": "text-embedding-3-small",
+    "capabilities": ["embeddings"],
+    "family": "embedding"
   }
 ]

@@ -12,7 +12,8 @@ from __future__ import annotations
 
 import csv
 import json
-import xml.etree.ElementTree as ET
+import re
+import defusedxml.ElementTree as ET
 import zipfile
 from pathlib import Path
 
@@ -67,6 +68,8 @@ def ingest_file(filepath: str | Path) -> IngestResult:
     try:
         result = parser(path)
         result.metadata.update(metadata)
+        if result.content:
+            result.content = _normalize_content(result.content)
         # Truncate if too large
         if len(result.content) > _MAX_CONTENT_BYTES:
             result.content = result.content[:_MAX_CONTENT_BYTES]
@@ -79,6 +82,13 @@ def ingest_file(filepath: str | Path) -> IngestResult:
             metadata=metadata,
             error=f"Failed to parse {path.name}: {e}",
         )
+
+
+def _normalize_content(content: str) -> str:
+    content = content.strip()
+    content = content.replace("\r\n", "\n").replace("\r", "\n")
+    content = re.sub(r"\n{3,}", "\n\n", content)
+    return content
 
 
 # ---------------------------------------------------------------------------

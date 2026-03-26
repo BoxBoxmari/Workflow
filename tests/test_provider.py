@@ -22,6 +22,22 @@ class TestWorkbenchClient(unittest.TestCase):
         self.assertIn("/deployments/gpt-4o/chat/completions", url)
         self.assertIn("api-version=2024-06-01", url)
 
+    def test_build_url_respects_model_override(self):
+        client = WorkbenchClient(
+            base_url="https://api.test.local/genai/azure/openai",
+            subscription_key="test-key",
+            charge_code="test-code",
+            api_version="2024-06-01",
+            timeout=30,
+            model_overrides={
+                "gpt-5-2025-08-07-gs-ae": {"api_version": "2025-01-01-preview"},
+            },
+        )
+        url = client._build_url("gpt-5-2025-08-07-gs-ae")
+        self.assertIn("api-version=2025-01-01-preview", url)
+        url_default = client._build_url("gpt-4o")
+        self.assertIn("api-version=2024-06-01", url_default)
+
     def test_headers_set(self):
         self.assertEqual(
             self.client._session.headers["Ocp-Apim-Subscription-Key"],
@@ -90,6 +106,34 @@ class TestWorkbenchClient(unittest.TestCase):
         }
         client = WorkbenchClient.from_config(config)
         self.assertEqual(client.base_url, "https://test.local")
+
+    def test_from_config_default_api_version_and_model_overrides(self):
+        config = {
+            "base_url": "https://test.local",
+            "subscription_key": "key",
+            "charge_code": "code",
+            "default_api_version": "2024-06-01",
+            "model_overrides": {
+                "m-special": {"api_version": "2025-01-01-preview"},
+            },
+        }
+        client = WorkbenchClient.from_config(config)
+        self.assertEqual(client.api_version, "2024-06-01")
+        self.assertEqual(
+            client.model_overrides["m-special"]["api_version"],
+            "2025-01-01-preview",
+        )
+        self.assertIn("2025-01-01-preview", client._build_url("m-special"))
+
+    def test_from_config_legacy_api_version_key(self):
+        config = {
+            "base_url": "https://test.local",
+            "subscription_key": "key",
+            "charge_code": "code",
+            "api_version": "2024-08-01-preview",
+        }
+        client = WorkbenchClient.from_config(config)
+        self.assertEqual(client.api_version, "2024-08-01-preview")
 
 
 if __name__ == "__main__":

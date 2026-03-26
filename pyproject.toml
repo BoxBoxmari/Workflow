@@ -12,3 +12,19 @@ exclude = [
 [[tool.mypy.overrides]]
 module = "tests.*"
 follow_imports = "silent"
+
+[tool.ruff]
+line-length = 100
+extend-exclude = [
+    ".venv",
+    "__pycache__",
+    ".git",
+    "build",
+    ".agent",
+    ".cursor",
+    ".mypy_cache",
+]
+
+[tool.ruff.lint]
+select = ["E", "F"]
+ignore = ["E203"]

@@ -106,6 +106,11 @@ class StorageManager:
     def _steps_dir(self, run_id: str) -> Path:
         return self._run_dir(run_id) / "steps"
 
+    def _step_counter_path(self, run_id: str) -> Path:
+        # Sidecar counter for legacy step_XX.json sequencing.
+        # Stores the last allocated integer index as UTF-8 text.
+        return self._steps_dir(run_id) / ".step_counter"
+
     def _nodes_dir(self, run_id: str) -> Path:
         return self._run_dir(run_id) / "nodes"
 
@@ -151,15 +156,44 @@ class StorageManager:
         """Write a step result to steps/step_XX.json."""
         steps_dir = self._steps_dir(run_id)
         steps_dir.mkdir(parents=True, exist_ok=True)
-        # Determine step index from existing files
-        existing = sorted(steps_dir.glob("step_*.json"))
-        idx = len(existing) + 1
-        filename = f"step_{idx:02d}.json"
-        path = steps_dir / filename
-        path.write_text(
-            json.dumps(step_result.to_dict(), indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
+
+        # PERF-003: avoid glob+sort on every step write.
+        # Serialize step index allocation to prevent races under concurrent callbacks.
+        with self._write_lock:
+            counter_path = self._step_counter_path(run_id)
+
+            last_idx = 0
+            if counter_path.is_file():
+                try:
+                    last_idx = int(counter_path.read_text(encoding="utf-8").strip() or "0")
+                except ValueError:
+                    last_idx = 0
+
+            if last_idx <= 0:
+                # Initialize counter once for legacy runs (may already have step files).
+                max_idx = 0
+                for p in steps_dir.glob("step_*.json"):
+                    name = p.stem  # step_XX
+                    if not name.startswith("step_"):
+                        continue
+                    suffix = name.removeprefix("step_")
+                    try:
+                        n = int(suffix)
+                    except ValueError:
+                        continue
+                    max_idx = max(max_idx, n)
+                last_idx = max_idx
+
+            idx = last_idx + 1
+            filename = f"step_{idx:02d}.json"
+            path = steps_dir / filename
+
+            path.write_text(
+                json.dumps(step_result.to_dict(), indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+            counter_path.write_text(str(idx), encoding="utf-8")
 
     def load_step(self, run_id: str, step_filename: str) -> StepResult:
         """Load a specific step file."""
@@ -299,12 +333,9 @@ class StorageManager:
         """
         Internal implementation; always runs on the write-queue thread.
 
-        Performance strategy (PERF-002):
-          - NEW runs: single-row append in O(1) — no read required.
-          - EXISTING runs (status update): full read-modify-write cycle.
-
-        This makes the common case (logging a new run) fast regardless of
-        how many historical runs exist in index.csv.
+        Performance strategy (PERF-001):
+          - Append-only for BOTH new runs and existing-run status updates (O(1)).
+          - Read-side (`list_runs`) and maintenance (`compact_index`) dedupe by run_id.
         """
         with self._write_lock:
             new_row = {
@@ -318,20 +349,7 @@ class StorageManager:
                 "run_type": run_ctx.run_type,
             }
 
-            # Check if run already exists by scanning run_id column only
-            existing_ids = self._read_index_run_ids()
-
-            if run_ctx.run_id not in existing_ids:
-                # Fast path: append single row, no full rewrite
-                self._append_to_index(new_row)
-            else:
-                # Update path: full rewrite needed to change an existing row
-                rows = self._read_index_rows()
-                for i, row in enumerate(rows):
-                    if row.get("run_id") == run_ctx.run_id:
-                        rows[i] = new_row
-                        break
-                self._write_index_rows(rows)
+            self._append_to_index(new_row)
 
     def _append_to_index(self, row: dict) -> None:
         """
@@ -339,12 +357,27 @@ class StorageManager:
 
         O(1) operation — opens file in append mode, writes one CSV line.
         """
-        write_header = not self.index_path.is_file()
-        with open(self.index_path, "a", encoding="utf-8", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=self._INDEX_FIELDS)
-            if write_header:
-                writer.writeheader()
-            writer.writerow(row)
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                write_header = not self.index_path.is_file()
+                with open(self.index_path, "a", encoding="utf-8", newline="") as f:
+                    writer = csv.DictWriter(f, fieldnames=self._INDEX_FIELDS)
+                    if write_header:
+                        writer.writeheader()
+                    writer.writerow(row)
+                return
+            except PermissionError:
+                if attempt == max_retries - 1:
+                    raise
+                wait = 0.5 * (attempt + 1)  # 0.5s, 1.0s, then raise
+                log.warning(
+                    "index.csv locked (append attempt %d/%d), retrying in %.1fs",
+                    attempt + 1,
+                    max_retries,
+                    wait,
+                )
+                time.sleep(wait)
 
     def _read_index_run_ids(self) -> set[str]:
         """Read only the run_id column from index.csv (fast membership check)."""
@@ -370,18 +403,15 @@ class StorageManager:
         """
         with self._write_lock:
             rows = self._read_index_rows()
-            # Preserve last occurrence of each run_id
-            deduped: dict[str, dict] = {}
-            for row in rows:
-                run_id = row.get("run_id", "")
-                if run_id:
-                    deduped[run_id] = row
-            self._write_index_rows(list(deduped.values()))
-            log.info("compact_index: %d rows → %d unique runs", len(rows), len(deduped))
+            deduped_rows = self._dedupe_index_rows(rows)
+            self._write_index_rows(deduped_rows)
+            log.info(
+                "compact_index: %d rows → %d unique runs", len(rows), len(deduped_rows)
+            )
 
     def list_runs(self) -> list[RunSummary]:
-        """Read index.csv and return RunSummary objects."""
-        rows = self._read_index_rows()
+        """Read index.csv and return RunSummary objects (deduped by run_id)."""
+        rows = self._dedupe_index_rows(self._read_index_rows())
         summaries = []
         for row in rows:
             summaries.append(
@@ -397,6 +427,30 @@ class StorageManager:
                 )
             )
         return summaries
+
+    def _dedupe_index_rows(self, rows: list[dict]) -> list[dict]:
+        """
+        Deduplicate index rows by run_id.
+
+        Contract:
+          - At most 1 row per run_id.
+          - Field values are last-write-wins (latest occurrence wins).
+          - Ordering is by first occurrence of each run_id (stable history order),
+            so updating an existing run does not reorder the UI list.
+        """
+        first_pos: dict[str, int] = {}
+        latest_row: dict[str, dict] = {}
+
+        for i, row in enumerate(rows):
+            run_id = (row.get("run_id") or "").strip()
+            if not run_id:
+                continue
+            if run_id not in first_pos:
+                first_pos[run_id] = i
+            latest_row[run_id] = row
+
+        ordered = sorted(first_pos.items(), key=lambda kv: kv[1])
+        return [latest_row[run_id] for run_id, _ in ordered]
 
     def _read_index_rows(self) -> list[dict]:
         """Read all rows from index.csv."""
