@@ -7,6 +7,7 @@ The WorkspaceController builds view-models whenever state changes.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
@@ -20,13 +21,36 @@ from core.workflow_layout import compute_layout
 # Flow canvas view-models
 # ---------------------------------------------------------------------------
 
+_INTERNAL_STEP_NAME_RE = r"^step_[0-9a-f]{8}$"
+
+
+def _is_internal_step_name(name: object) -> bool:
+    s = (str(name) if name is not None else "").strip()
+    if not s:
+        return False
+    return bool(re.match(_INTERNAL_STEP_NAME_RE, s))
+
+
+def _display_title(step: StepDef) -> str:
+    title = (step.title or "").strip()
+    if title:
+        return title
+    name = (step.name or "").strip()
+    if name and not _is_internal_step_name(name):
+        return name
+    return "Untitled step"
+
+
+def _inspector_title(step: StepDef) -> str:
+    return (step.title or "").strip()
+
 
 @dataclass
 class FlowNodeVM:
     """View-model for a single step card in the flow canvas."""
 
     step_id: str
-    title: str  # display title (step.title or step.name)
+    title: str  # display title (avoid leaking internal IDs)
     purpose: str  # short description
     model: str
     status: StepStatus = StepStatus.PENDING
@@ -125,7 +149,7 @@ def build_flow_viewmodel(
     bindings = attachment_bindings or {}
 
     # Build a mapping: step_id → display title for flow arrow labels
-    id_to_title = {s.id: (s.title or s.name) for s in workflow.steps}
+    id_to_title = {s.id: _display_title(s) for s in workflow.steps}
 
     nodes: list[FlowNodeVM] = []
     for i, step in enumerate(workflow.steps):
@@ -176,7 +200,7 @@ def build_flow_viewmodel(
 
         node = FlowNodeVM(
             step_id=step.id,
-            title=step.title or step.name,
+            title=_display_title(step),
             purpose=getattr(step, "purpose", ""),
             model=step.model,
             status=status,
@@ -222,7 +246,7 @@ def build_inspector_viewmodel(
     return StepInspectorVM(
         step_id=step.id,
         name=step.name,
-        title=step.title or step.name,
+        title=_inspector_title(step),
         purpose=getattr(step, "purpose", ""),
         model=step.model,
         prompt_version=step.prompt_version,

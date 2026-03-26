@@ -6,7 +6,7 @@ Build a small local Python application that lets a BA, solution architect, devel
 The product is not a general chatbot and not a production orchestration platform. It is a validation workbench for:
 - model selection by workflow step
 - prompt comparison and prompt iteration
-- sequential workflow execution
+- workflow execution with global runtime toggle (legacy or graph)
 - practical file ingestion for local testing
 - traceable review of input, output, metrics, and errors
 

@@ -92,7 +92,7 @@ def build_graph(workflow: WorkflowDef) -> WorkflowGraph:
         node = GraphNode(
             step_id=step.id,
             step_name=step.name,
-            title=getattr(step, "title", "") or step.name,
+            title=getattr(step, "title", "") or step.id,
             index=idx,
             lane=lane,
         )

@@ -33,6 +33,7 @@ def _make_ctrl():
     ctrl.redo = MagicMock()
     ctrl.save = MagicMock(return_value=(True, ""))
     ctrl.update_appearance_mode = MagicMock()
+    ctrl.update_manual_input = MagicMock()
     ctrl.set_state_changed_callback = MagicMock()
 
     wf = SimpleNamespace(name="WF")
@@ -40,6 +41,7 @@ def _make_ctrl():
         appearance_mode="Dark",
         is_running=False,
         is_dirty=False,
+        manual_input="",
         enable_graph_runtime=False,
         get_selected_workflow=lambda: wf,
     )
@@ -89,6 +91,9 @@ def test_workspace_shell_buttons_invoke_controller_methods():
             # Buttons call controller methods.
             shell.run_btn.invoke()
             ctrl.start_run.assert_called_once()
+
+            shell.save_btn.invoke()
+            ctrl.save.assert_called_once()
 
             # Undo/redo are disabled unless controller says they're available.
             ctrl.can_undo = True
@@ -185,6 +190,48 @@ def test_workspace_shell_appearance_menu_calls_controller_update():
 
             shell._on_appearance_mode_change("Light")
             ctrl.update_appearance_mode.assert_called_once_with("Light")
+    finally:
+        try:
+            root.destroy()
+        except Exception:
+            pass
+
+
+@pytest.mark.skipif(not _HAVE_DISPLAY, reason=_SKIP_REASON)
+def test_workspace_shell_workflow_input_updates_controller_and_syncs_from_state():
+    import customtkinter as ctk
+
+    ctk.set_appearance_mode("Dark")
+    try:
+        root = ctk.CTk()
+        root.withdraw()
+    except (ValueError, tk.TclError):
+        pytest.skip("Environment does not support UI display/transparency")
+
+    ctrl = _make_ctrl()
+    Stub = _stub_panel_class()
+
+    try:
+        with mock.patch("ui.workspace_shell.FlowCanvas", Stub), mock.patch(
+            "ui.workspace_shell.InspectorPanel", Stub
+        ), mock.patch("ui.workspace_shell.SidebarPanel", Stub), mock.patch(
+            "ui.workspace_shell.ResultDrawer", Stub
+        ):
+            from ui.workspace_shell import WorkspaceShell
+
+            shell = WorkspaceShell(root, ctrl)
+
+            # User typing -> controller.update_manual_input
+            ctrl.update_manual_input.reset_mock()
+            shell.workflow_input_var.set("X")
+            ctrl.update_manual_input.assert_called_once_with("X")
+
+            # State update -> UI sync (should not call controller again)
+            ctrl.update_manual_input.reset_mock()
+            ctrl.state.manual_input = "Y"
+            shell._on_state_changed(ctrl.state)
+            assert shell.workflow_input_var.get() == "Y"
+            ctrl.update_manual_input.assert_not_called()
     finally:
         try:
             root.destroy()

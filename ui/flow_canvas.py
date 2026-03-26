@@ -8,17 +8,29 @@ file chip, and action context menu.
 
 from __future__ import annotations
 
+import re
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog
 import customtkinter as ctk
 
 from core.graph_utils import ROOT_SOURCE_IDS
+from ui import dialogs
 from ui import theme as T
 from ui.workspace_controller import WorkspaceController
 from ui.viewmodels import FlowEdgeVM, FlowNodeVM
 
 WORKFLOW_INPUT_EDGE_LABEL = "Workflow input"
+
+
+def _display_step_title(step) -> str:
+    title = (getattr(step, "title", "") or "").strip()
+    if title:
+        return title
+    name = (getattr(step, "name", "") or "").strip()
+    if name and not re.match(r"^step_[0-9a-f]{8}$", name):
+        return name
+    return "Untitled step"
 
 
 def incoming_peer_label(from_id: str, id_to_title: dict[str, str]) -> str:
@@ -33,7 +45,7 @@ def index_flow_edges(
     edges: list[FlowEdgeVM], nodes: list[FlowNodeVM]
 ) -> tuple[dict[str, list[FlowEdgeVM]], dict[str, list[FlowEdgeVM]], dict[str, str]]:
     """Group edges by target (incoming) and source (outgoing); map step id → display title."""
-    id_to_title = {n.step_id: (n.title or "").strip() or n.step_id for n in nodes}
+    id_to_title = {n.step_id: (n.title or "").strip() or "Untitled step" for n in nodes}
     edges_in: dict[str, list[FlowEdgeVM]] = {}
     edges_out: dict[str, list[FlowEdgeVM]] = {}
     for e in edges:
@@ -471,14 +483,13 @@ class FlowCanvas(ctk.CTkFrame):
     # ------------------------------------------------------------------
 
     def _confirm_delete_step(self, step_id: str) -> None:
-        from tkinter import messagebox
-
         step = self.ctrl.state.get_step_by_id(step_id)
-        name = (step.title or step.name) if step else step_id
-        if messagebox.askyesno(
+        name = _display_step_title(step) if step else "Untitled step"
+        if dialogs.ask_yes_no(
             "Delete Step",
             f"Delete step '{name}'?\n\nThis action cannot be undone.",
             icon="warning",
+            parent=self.winfo_toplevel(),
         ):
             self.ctrl.delete_step(step_id)
 
@@ -496,7 +507,7 @@ class FlowCanvas(ctk.CTkFrame):
             return
 
         modal = ctk.CTkToplevel(self)
-        modal.title(f"Attachments — {step.title or step.name}")
+        modal.title(f"Attachments — {_display_step_title(step)}")
         modal.geometry("560x520")
         modal.transient(self.winfo_toplevel())
         modal.grab_set()

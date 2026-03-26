@@ -69,12 +69,16 @@ def normalized_source_ref_from_choice(
 
 
 def _step_base_title(step) -> str:
-    """Display base for a step: title → name → id (non-empty first)."""
-    for attr in ("title", "name", "id"):
-        v = getattr(step, attr, None)
-        if v is not None and str(v).strip():
-            return str(v).strip()
-    return step.id or ""
+    """Hiển thị nhãn base cho step (ưu tiên title, không lộ step id nội bộ)."""
+    title = (getattr(step, "title", "") or "").strip()
+    if title:
+        return title
+
+    name = (getattr(step, "name", "") or "").strip()
+    # Avoid leaking auto-generated internal names like "step_deadbeef".
+    if name and not re.match(r"^step_[0-9a-f]{8}$", name):
+        return name
+    return "Untitled step"
 
 
 JOIN_STRATEGY_LABEL_TO_VALUE = {
@@ -320,7 +324,7 @@ class InspectorPanel(ctk.CTkFrame):
         # Step ID
         self.id_frame = ctk.CTkFrame(self.advanced_frame, fg_color="transparent")
         self.id_frame.pack(fill=tk.X, padx=T.PAD_SM, pady=(T.PAD_SM, T.PAD_SM))
-        ctk.CTkLabel(self.id_frame, text="Step ID:", font=T.FONT_BODY).pack(
+        ctk.CTkLabel(self.id_frame, text="Step Title:", font=T.FONT_BODY).pack(
             side=tk.LEFT
         )
         self.id_label = ctk.CTkLabel(
@@ -353,7 +357,17 @@ class InspectorPanel(ctk.CTkFrame):
         self._current_step_id = vm.step_id
         self._current_exec_mode = vm.execution_mode
 
-        self.header_label.configure(text=f"Step: {vm.title}")
+        # Header should use a friendly display title; title entry remains editable and
+        # reflects the actual StepDef.title (may be empty).
+        display_title = (vm.title or "").strip()
+        if not display_title:
+            n = (getattr(vm, "name", "") or "").strip()
+            if n and not re.match(r"^step_[0-9a-f]{8}$", n):
+                display_title = n
+            else:
+                display_title = "Untitled step"
+
+        self.header_label.configure(text=f"Step: {display_title}")
         self.title_var.set(vm.title)
         self.purpose_var.set(vm.purpose)
         self.model_var.set(vm.model)
@@ -371,7 +385,7 @@ class InspectorPanel(ctk.CTkFrame):
         self.input_var.set(vm.input_mapping)
         self.output_var.set(vm.output_mapping)
         self.pv_var.set(vm.prompt_version)
-        self.id_label.configure(text=vm.step_id)
+        self.id_label.configure(text=display_title)
 
         self._refresh_att_badge()
         self._suppress_trace = False
@@ -839,11 +853,13 @@ class InspectorPanel(ctk.CTkFrame):
             or step_key == NO_SOURCE_LABEL
         ):
             return
-        canonical_step, port_key = normalized_source_ref_from_choice(
-            step_key, source_port
-        )
+        canonical_step = self._canonical_source_step_id(step_key)
         if not canonical_step:
             return
+        if canonical_step == CANONICAL_WORKFLOW_ROOT_STEP_ID:
+            port_key = "input"
+        else:
+            port_key = (source_port or "").strip() or "output"
         sources = list(current_sources)
         sources.append(SourceRef(step_id=canonical_step, port=port_key))
         self.ctrl.update_port_config(step_id, "input", port_name, "sources", sources)
@@ -1190,24 +1206,45 @@ class InspectorPanel(ctk.CTkFrame):
         return False
 
     def _canonical_source_step_id(self, combo_or_id: str) -> str:
-        # First: try canonical_source_step_id_from_combo which handles root IDs and
-        # "Title (step_id)" suffix patterns.
-        canonical = canonical_source_step_id_from_combo(combo_or_id)
-        # canonical_source_step_id_from_combo returns the raw input when it doesn't
-        # match any known pattern (root IDs, suffix format). Only short-circuit when
-        # the function has positively identified the canonical form (i.e. it changed
-        # the value OR the value is a known ROOT_SOURCE_ID).
-        from core.graph_utils import ROOT_SOURCE_IDS
-
         raw = (combo_or_id or "").strip()
-        if canonical and (canonical != raw or raw in ROOT_SOURCE_IDS):
+        wf = self.ctrl.state.get_selected_workflow()
+
+        known_step_ids: set[str] = set()
+        if wf:
+            known_step_ids = {s.id for s in wf.steps}
+
+        # First: attempt to parse known root / "(title (step_id))" patterns.
+        canonical = canonical_source_step_id_from_combo(raw)
+        if canonical in known_step_ids or canonical == CANONICAL_WORKFLOW_ROOT_STEP_ID:
             return canonical
+
+        # Then: resolve collision disambiguation using ordinal suffixes like "Title (1)".
+        # This avoids exposing internal ids such as "step_****" or "s1".
+        parsed = parse_title_id_suffix(raw)
+        if wf and parsed:
+            display_title, inner = parsed
+            if inner.isdigit():
+                idx = int(inner) - 1
+                candidates = sorted(
+                    (
+                        s
+                        for s in wf.steps
+                        if s.execution_mode == "graph"
+                        and _step_base_title(s) == display_title
+                    ),
+                    key=lambda s: str(s.id),
+                )
+                if 0 <= idx < len(candidates):
+                    return candidates[idx].id
 
         # Fallback: resolve title-only labels against the current workflow.
         # Only accept unambiguous matches (exactly one candidate).
-        wf = self.ctrl.state.get_selected_workflow()
         if wf:
-            candidates = [s for s in wf.steps if _step_base_title(s) == combo_or_id]
+            candidates = [
+                s
+                for s in wf.steps
+                if s.execution_mode == "graph" and _step_base_title(s) == raw
+            ]
             if len(candidates) == 1:
                 return candidates[0].id
         return ""
@@ -1215,23 +1252,35 @@ class InspectorPanel(ctk.CTkFrame):
     def _display_label_for_source_step_id(self, step_id: str) -> str:
         if step_id in ROOT_SOURCE_IDS:
             return INSPECTOR_ROOT_SOURCE_DISPLAY
+        mode_obj = getattr(self.ctrl.state, "mode", "")
+        mode_value = getattr(mode_obj, "value", mode_obj)
+        if mode_value == "simple":
+            return step_id
         step = self.ctrl.state.get_step_by_id(step_id)
         if step:
-            return _step_base_title(step)
+            return _step_base_title(step) or step_id
         return step_id
 
     def _format_source_line(self, src) -> str:
         label = self._display_label_for_source_step_id(src.step_id)
         return f"← {label}"
 
-    def _format_step_combo_option(self, step, *, disambiguate: bool = False) -> str:
+    def _format_step_combo_option(
+        self,
+        step,
+        *,
+        disambiguate: bool = False,
+        ordinal: int | None = None,
+    ) -> str:
         """Combo display.
 
-        Use step base title unless disambiguate=True, in which case append (step_id).
+        Use step base title unless disambiguate=True, in which case append an ordinal
+        like "(1)", "(2)", ... to avoid exposing internal step ids.
         """
         base = _step_base_title(step)
         if disambiguate:
-            return f"{base} ({step.id})"
+            suffix = str(ordinal) if ordinal is not None else "?"
+            return f"{base} ({suffix})"
         return base
 
     def _available_source_steps(self, current_step_id: str) -> list[str]:
@@ -1243,17 +1292,31 @@ class InspectorPanel(ctk.CTkFrame):
             for step in wf.steps
             if step.id != current_step_id and step.execution_mode == "graph"
         ]
-        # Detect label collisions so the user always gets a deterministic mapping.
-        base_labels = [_step_base_title(s) for s in candidate_steps]
-        label_counts: dict[str, int] = {}
-        for lbl in base_labels:
-            label_counts[lbl] = label_counts.get(lbl, 0) + 1
+        # Detect label collisions so the user always gets a deterministic mapping,
+        # without leaking internal step ids.
+        base_to_steps: dict[str, list] = {}
+        for step in candidate_steps:
+            base = _step_base_title(step)
+            base_to_steps.setdefault(base, []).append(step)
+
+        ordinal_by_step_id: dict[str, int] = {}
+        for base, steps in base_to_steps.items():
+            if len(steps) <= 1:
+                continue
+            ordered = sorted(steps, key=lambda s: str(s.id))
+            for i, s in enumerate(ordered, start=1):
+                ordinal_by_step_id[str(s.id)] = i
+
         options: list[str] = [INSPECTOR_ROOT_SOURCE_DISPLAY]
         for step in candidate_steps:
             base = _step_base_title(step)
-            disambiguate = label_counts.get(base, 0) > 1
+            disambiguate = len(base_to_steps.get(base, [])) > 1
             options.append(
-                self._format_step_combo_option(step, disambiguate=disambiguate)
+                self._format_step_combo_option(
+                    step,
+                    disambiguate=disambiguate,
+                    ordinal=ordinal_by_step_id.get(str(step.id)),
+                )
             )
         return options
 

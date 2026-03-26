@@ -19,6 +19,7 @@ from core.events import EventBus
 from core.prompts import PromptRegistry
 from core.provider import WorkbenchClient
 from core.storage import StorageManager
+from ui import dialogs
 
 log = logging.getLogger("workbench.ui.app")
 
@@ -154,8 +155,6 @@ class App:
     def _load_provider_config(self) -> None:
         provider_file = self.config_dir / "provider.json"
 
-        from config.secure_credentials import SecureCredentialStore
-
         cfg = {}
         if provider_file.is_file():
             try:
@@ -163,17 +162,17 @@ class App:
             except Exception as e:
                 log.error("Failed to parse provider.json: %s", e)
 
-        # Build client preferring secure store, falling back to cfg
+        # Build client using secure store/env for credentials only
         self.client = WorkbenchClient.from_config(cfg)
 
-        # Show UI warning if we fell back to plaintext config for keys
-        if SecureCredentialStore.get_api_key() is None and cfg.get("subscription_key"):
-            from tkinter import messagebox
-
-            messagebox.showwarning(
+        # If plaintext credentials still exist in provider.json, warn explicitly.
+        if cfg.get("subscription_key") or cfg.get("charge_code"):
+            dialogs.show_warning(
                 "Security Warning",
-                "API credentials loaded from plaintext provider.json.\n\n"
-                "Please migrate to OS Credential Manager for better security.",
+                "Detected plaintext API credentials in provider.json.\n\n"
+                "These values are ignored. Move credentials to OS Credential Manager "
+                "or environment variables (WORKBENCH_SUBSCRIPTION_KEY / WORKBENCH_CHARGE_CODE).",
+                parent=self.root,
             )
 
     def _pump_events(self) -> None:

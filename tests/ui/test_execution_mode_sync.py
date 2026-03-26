@@ -48,7 +48,7 @@ def test_execution_mode_mismatch_shows_warning_without_mutating_step(app_root):
     ctrl.state.workflow_drafts["w1"] = wf
     ctrl.state.mode = MagicMock(value="advanced")
     ctrl.state.selected_workflow_id = "w1"
-    ctrl.state.selected_step_id = "s1"
+    ctrl.state.selected_step_id = "s2"
     ctrl.state.enable_graph_runtime = False
 
     # Establish mismatch state from source-of-truth check.
@@ -57,8 +57,9 @@ def test_execution_mode_mismatch_shows_warning_without_mutating_step(app_root):
     panel = InspectorPanel(app_root, ctrl)
     panel.refresh()
 
-    # Contract guard must never mutate persisted step declaration.
+    # Contract guard must never mutate persisted step declarations.
     assert step.execution_mode == "legacy"
+    assert graph_step.execution_mode == "graph"
 
     # Mismatch must be surfaced to user as warning/banner in inspector.
     assert panel.model_warning.winfo_manager() != ""

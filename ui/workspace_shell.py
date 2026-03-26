@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 import customtkinter as ctk
 
 import ui.theme as T
+from ui import dialogs
 from ui.flow_canvas import FlowCanvas
 from ui.inspector_panel import InspectorPanel
 from ui.result_drawer import ResultDrawer
@@ -124,6 +125,10 @@ class WorkspaceShell(ctk.CTkFrame):
         self._last_run_ok: bool | None = (
             None  # None=no run yet, True=success, False=fail
         )
+        self._workflow_syncing: bool = False
+        self.workflow_input_var = ctk.StringVar(
+            value=getattr(self.ctrl.state, "manual_input", "")
+        )
 
         # Layout configuration
         self.grid_columnconfigure(0, weight=1)
@@ -193,6 +198,18 @@ class WorkspaceShell(ctk.CTkFrame):
         self.stop_btn.pack(side=tk.LEFT, padx=T.PAD_XS)
         Tooltip(self.stop_btn, "Stop Workflow")
 
+        self.save_btn = ctk.CTkButton(
+            btn_frame,
+            text="💾 Save",
+            width=80,
+            fg_color=T.CLR_SURFACE,
+            hover_color=T.CLR_SELECTED,
+            text_color=T.CLR_MUTED,
+            command=self._on_save,
+        )
+        self.save_btn.pack(side=tk.LEFT, padx=(T.PAD_SM, 0))
+        Tooltip(self.save_btn, "Save Workflow (Ctrl+S)")
+
         # Undo / Redo icon buttons
         self.undo_btn = ctk.CTkButton(
             btn_frame,
@@ -243,6 +260,21 @@ class WorkspaceShell(ctk.CTkFrame):
         )
         self.dirty_label.pack(side=tk.LEFT, padx=T.PAD_SM)
 
+        self.workflow_input_label = ctk.CTkLabel(
+            parent, text="Workflow input", font=T.FONT_SMALL, text_color=T.CLR_MUTED
+        )
+        self.workflow_input_label.pack(side=tk.LEFT, padx=(T.PAD_SM, 6))
+
+        self.workflow_input_entry = ctk.CTkEntry(
+            parent,
+            textvariable=self.workflow_input_var,
+            width=260,
+            height=28,
+            placeholder_text="Workflow input…",
+        )
+        self.workflow_input_entry.pack(side=tk.LEFT, padx=(0, T.PAD_SM))
+        Tooltip(self.workflow_input_entry, "Global input for graph workflows")
+
         self._save_status_label = ctk.CTkLabel(
             parent, text="", font=T.FONT_SMALL, text_color=T.CLR_MUTED
         )
@@ -262,6 +294,16 @@ class WorkspaceShell(ctk.CTkFrame):
         )
         self.progress.pack(side=tk.LEFT, padx=T.PAD_LG, fill=tk.X, expand=True)
         self.progress.set(0)
+
+        self.workflow_input_var.trace_add("write", self._on_workflow_input_changed)
+
+    def _on_workflow_input_changed(self, *_args) -> None:
+        if self._workflow_syncing:
+            return
+        try:
+            self.ctrl.update_manual_input(self.workflow_input_var.get())
+        except Exception as e:
+            log.warning("Workflow input update failed: %s", e)
 
     # ------------------------------------------------------------------
     # Keyboard shortcuts
@@ -314,14 +356,12 @@ class WorkspaceShell(ctk.CTkFrame):
     # ------------------------------------------------------------------
 
     def _on_save(self) -> None:
-        from tkinter import messagebox
-
         ok, msg = self.ctrl.save()
         if ok:
             self._last_save_time = time.time()
             self._update_save_label()
         else:
-            messagebox.showerror("Save Failed", msg)
+            dialogs.show_error("Save Failed", str(msg), parent=self._root)
 
     @staticmethod
     def _relative_time(epoch: float) -> str:
@@ -387,11 +427,13 @@ class WorkspaceShell(ctk.CTkFrame):
         if state.is_running:
             self.run_btn.configure(state="disabled")
             self.stop_btn.configure(state="normal", fg_color=T.CLR_ERROR)
+            self.save_btn.configure(state="disabled")
             self.progress.start()
             self._run_status_label.configure(text="⏳ Running…", text_color=T.CLR_MUTED)
         else:
             self.run_btn.configure(state="normal")
             self.stop_btn.configure(state="disabled", fg_color=T.CLR_PENDING)
+            self.save_btn.configure(state="normal")
             self.progress.stop()
             self.progress.set(0)
             if self._last_run_ok is True:
@@ -422,3 +464,12 @@ class WorkspaceShell(ctk.CTkFrame):
         # 5. Sync appearance toggle
         if self.appearance_var.get() != state.appearance_mode:
             self.appearance_var.set(state.appearance_mode)
+
+        # 6. Sync workflow input
+        desired = getattr(state, "manual_input", "")
+        if self.workflow_input_var.get() != desired:
+            self._workflow_syncing = True
+            try:
+                self.workflow_input_var.set(desired)
+            finally:
+                self._workflow_syncing = False

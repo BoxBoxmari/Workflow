@@ -127,7 +127,8 @@ class DuplicateStepCommand:
             if s.id == self.source_step_id:
                 new = copy.deepcopy(s)
                 new.id = _uuid.uuid4().hex[:8]
-                new.title = f"{s.title or s.name} (copy)"
+                base_title = (s.title or "").strip() or "Untitled step"
+                new.title = f"{base_title} (copy)"
                 self._new_step = new
                 self._insert_index = i + 1
                 self.workflow.steps.insert(self._insert_index, new)

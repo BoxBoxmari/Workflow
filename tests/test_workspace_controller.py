@@ -98,8 +98,8 @@ def test_report_execution_mode_mismatch_flags_graph_when_legacy_expected():
 
     ctrl._report_execution_mode_mismatch(wf)
 
-    # Step-level declaration resolves runtime to graph, so no mismatch.
-    assert ctrl._last_execution_mode_mismatches == []
+    # Global runtime toggle is source-of-truth; graph step mismatches.
+    assert ctrl._last_execution_mode_mismatches == ["s1"]
 
 
 def test_set_graph_runtime_enabled_recomputes_mismatch():
@@ -125,6 +125,44 @@ def test_set_graph_runtime_enabled_recomputes_mismatch():
 
     assert ctrl.state.enable_graph_runtime is False
     assert ctrl._last_execution_mode_mismatches == []
+
+
+def test_resolve_run_engine_mode_global_off_forces_legacy_even_with_graph_steps():
+    ctrl = make_mock_ctrl()
+    wf = WorkflowDef(
+        id="w1",
+        name="WF",
+        steps=[
+            StepDef(
+                id="s1",
+                name="graph_step",
+                model="gpt",
+                prompt_version="1",
+                execution_mode="graph",
+            )
+        ],
+    )
+    ctrl.state.enable_graph_runtime = False
+    assert ctrl._resolve_run_engine_mode(wf) == "legacy"
+
+
+def test_resolve_run_engine_mode_global_on_forces_graph_even_with_legacy_steps():
+    ctrl = make_mock_ctrl()
+    wf = WorkflowDef(
+        id="w1",
+        name="WF",
+        steps=[
+            StepDef(
+                id="s1",
+                name="legacy_step",
+                model="gpt",
+                prompt_version="1",
+                execution_mode="legacy",
+            )
+        ],
+    )
+    ctrl.state.enable_graph_runtime = True
+    assert ctrl._resolve_run_engine_mode(wf) == "graph"
 
 
 def test_add_and_remove_attachment_slot_updates_bindings():
@@ -242,6 +280,35 @@ def test_add_step_below_creates_graph_ready_step():
     assert step.outputs[0].name == "output"
 
 
+def test_rename_workflow_updates_draft_sets_dirty_and_notifies():
+    ctrl = make_mock_ctrl()
+    on_change = MagicMock()
+    ctrl.set_state_changed_callback(on_change)
+
+    wf = WorkflowDef(id="w1", name="Old Name")
+    ctrl.state.workflow_drafts["w1"] = wf
+
+    ok = ctrl.rename_workflow("w1", "  New Name  ")
+    assert ok is True
+    assert wf.name == "New Name"
+    assert ctrl.state.is_dirty is True
+    on_change.assert_called()
+
+
+def test_rename_workflow_rejects_missing_empty_or_noop():
+    ctrl = make_mock_ctrl()
+    on_change = MagicMock()
+    ctrl.set_state_changed_callback(on_change)
+
+    wf = WorkflowDef(id="w1", name="WF")
+    ctrl.state.workflow_drafts["w1"] = wf
+
+    assert ctrl.rename_workflow("missing", "X") is False
+    assert ctrl.rename_workflow("w1", "   ") is False
+    assert ctrl.rename_workflow("w1", "WF") is False
+    on_change.assert_not_called()
+
+
 def test_connect_and_disconnect_step_input():
     ctrl = make_mock_ctrl()
     step = StepDef(
@@ -312,3 +379,63 @@ def test_dict_join_strategy_normalized_on_load():
         }
     )
     assert port.join_strategy == "json_map"
+
+
+def test_rename_workflow_mutates_name_sets_dirty_and_notifies():
+    ctrl = make_mock_ctrl()
+    notify = MagicMock()
+    ctrl.set_state_changed_callback(notify)
+
+    wf = WorkflowDef(id="w1", name="WF1")
+    ctrl.state.workflow_drafts["w1"] = wf
+    ctrl.state.is_dirty = False
+
+    ok = ctrl.rename_workflow("w1", "WF2")
+    assert ok is True
+    assert ctrl.state.workflow_drafts["w1"].name == "WF2"
+    assert ctrl.state.is_dirty is True
+    assert notify.call_count == 1
+
+
+def test_rename_workflow_same_name_is_noop():
+    ctrl = make_mock_ctrl()
+    notify = MagicMock()
+    ctrl.set_state_changed_callback(notify)
+
+    wf = WorkflowDef(id="w1", name="WF1")
+    ctrl.state.workflow_drafts["w1"] = wf
+    ctrl.state.is_dirty = False
+
+    ok = ctrl.rename_workflow("w1", " WF1 ")
+    assert ok is False
+    assert ctrl.state.workflow_drafts["w1"].name == "WF1"
+    assert ctrl.state.is_dirty is False
+    assert notify.call_count == 0
+
+
+def test_rename_workflow_empty_name_is_rejected():
+    ctrl = make_mock_ctrl()
+    notify = MagicMock()
+    ctrl.set_state_changed_callback(notify)
+
+    wf = WorkflowDef(id="w1", name="WF1")
+    ctrl.state.workflow_drafts["w1"] = wf
+    ctrl.state.is_dirty = False
+
+    ok = ctrl.rename_workflow("w1", "   ")
+    assert ok is False
+    assert ctrl.state.workflow_drafts["w1"].name == "WF1"
+    assert ctrl.state.is_dirty is False
+    assert notify.call_count == 0
+
+
+def test_rename_workflow_missing_id_is_rejected():
+    ctrl = make_mock_ctrl()
+    notify = MagicMock()
+    ctrl.set_state_changed_callback(notify)
+    ctrl.state.is_dirty = False
+
+    ok = ctrl.rename_workflow("missing", "WF2")
+    assert ok is False
+    assert ctrl.state.is_dirty is False
+    assert notify.call_count == 0

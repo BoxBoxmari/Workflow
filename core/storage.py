@@ -15,6 +15,7 @@ from __future__ import annotations
 import csv
 import json
 import logging
+import os
 import queue
 import threading
 import time
@@ -86,6 +87,8 @@ class StorageManager:
       - All index writes (update_index, _write_index_rows) are serialized
         through self._write_lock and self._write_queue to prevent corruption
         when multiple threads trigger storage callbacks simultaneously.
+      - All event appends (append_event) are serialized through the same
+        write queue to avoid interleaving writes from concurrent callbacks.
     """
 
     def __init__(self, runs_dir: Optional[Path] = None):
@@ -285,14 +288,44 @@ class StorageManager:
     # ------------------------------------------------------------------
 
     def append_event(self, run_id: str, event: dict) -> None:
-        """Append one event to events.jsonl."""
+        """
+        Append one event to events.jsonl.
+
+        Enqueues the append operation to guarantee line-level integrity when
+        multiple event callbacks fire concurrently.
+        """
+        self._write_queue.enqueue(lambda: self._append_event_impl(run_id, event))
+
+    def _append_event_impl(self, run_id: str, event: dict) -> None:
         path = self._run_dir(run_id) / "events.jsonl"
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(event, ensure_ascii=False) + "\n")
+
+        line = json.dumps(event, ensure_ascii=False) + "\n"
+
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                with open(path, "a", encoding="utf-8", newline="") as f:
+                    f.write(line)
+                    f.flush()
+                    os.fsync(f.fileno())
+                return
+            except PermissionError:
+                if attempt == max_retries - 1:
+                    raise
+                wait = 0.2 * (attempt + 1)  # 0.2s, 0.4s, then raise
+                log.warning(
+                    "events.jsonl locked (append attempt %d/%d), retrying in %.1fs",
+                    attempt + 1,
+                    max_retries,
+                    wait,
+                )
+                time.sleep(wait)
 
     def load_events(self, run_id: str) -> list[dict]:
         """Load all events from events.jsonl."""
+        # Ensure queued append operations are visible to immediate readers/tests.
+        self._write_queue.flush()
         path = self._run_dir(run_id) / "events.jsonl"
         if not path.is_file():
             return []
@@ -411,6 +444,8 @@ class StorageManager:
 
     def list_runs(self) -> list[RunSummary]:
         """Read index.csv and return RunSummary objects (deduped by run_id)."""
+        # Ensure queued index updates are visible before read.
+        self._write_queue.flush()
         rows = self._dedupe_index_rows(self._read_index_rows())
         summaries = []
         for row in rows:

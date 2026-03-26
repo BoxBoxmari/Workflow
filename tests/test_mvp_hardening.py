@@ -168,6 +168,11 @@ class TestRootInputPropagation:
         ctrl.update_manual_input(None)
         assert ctrl.state.manual_input == ""
 
+    def test_update_manual_input_normalizes_line_endings_blank_lines_and_trims(self):
+        ctrl = _make_ctrl()
+        ctrl.update_manual_input("  a\r\nb\rc\n\n\n\nd  ")
+        assert ctrl.state.manual_input == "a\nb\nc\n\nd"
+
     def test_start_run_passes_manual_input_to_runner(self):
         """start_run must pass state.manual_input as initial_input into _start_runner."""
         ctrl = _make_ctrl()
@@ -216,6 +221,40 @@ class TestRootInputPropagation:
             "_start_runner not called with initial_input"
         )
         assert captured_kwargs["initial_input"] == "The user typed this"
+
+    def test_start_run_graph_passes_manual_input_to_runner(self):
+        """Graph-mode start_run must also pass state.manual_input as initial_input."""
+        ctrl = _make_ctrl()
+
+        wf = WorkflowDef(
+            id="wg1",
+            name="WG",
+            steps=[_graph_step("g1", "analyze")],
+        )
+        ctrl.state.workflow_drafts[wf.id] = wf
+        ctrl.state.selected_workflow_id = wf.id
+        ctrl.state.is_provider_ready = True
+        ctrl.state.manual_input = "Graph root input"
+
+        # Suppress validation so we focus on param threading
+        ctrl.config_service.list_prompt_steps.return_value = ["analyze"]
+        ctrl.config_service.list_prompt_versions.return_value = ["1"]
+        ctrl.config_service.load_models.return_value = ["gpt-4-1-2025-04-14-gs-ae"]
+
+        captured_kwargs: dict = {}
+
+        def _fake_start_runner(**kwargs):
+            captured_kwargs.update(kwargs)
+
+        with patch.object(ctrl, "_start_runner", side_effect=_fake_start_runner), patch.object(
+            ctrl, "_build_graph_runner", return_value=MagicMock()
+        ):
+            ctrl.start_run()
+
+        assert "initial_input" in captured_kwargs, (
+            "_start_runner not called with initial_input in graph mode"
+        )
+        assert captured_kwargs["initial_input"] == "Graph root input"
 
 
 # ---------------------------------------------------------------------------
@@ -351,19 +390,22 @@ class TestSourcePickerDisambiguation:
 
         colliding = [o for o in options if "Analyzer" in o]
         assert len(colliding) == 2, f"Expected 2 Analyzer options, got: {colliding}"
-        assert any("(s1)" in o for o in colliding), f"Missing (s1) suffix: {colliding}"
-        assert any("(s2)" in o for o in colliding), f"Missing (s2) suffix: {colliding}"
+        assert any("(1)" in o for o in colliding), f"Missing (1) suffix: {colliding}"
+        assert any("(2)" in o for o in colliding), f"Missing (2) suffix: {colliding}"
 
     def test_canonical_resolution_with_suffix(self):
-        """_canonical_source_step_id returns step_id for 'Title (step_id)'."""
+        """_canonical_source_step_id returns step_id for 'Title (ordinal)'."""
         steps = [
             _graph_step("s1", "Analyzer"),
             _graph_step("s2", "Analyzer"),
         ]
         panel = self._make_inspector_panel(steps, "s2")
 
-        resolved = panel._canonical_source_step_id("Analyzer (s1)")
+        resolved = panel._canonical_source_step_id("Analyzer (1)")
         assert resolved == "s1", f"Expected 's1', got {resolved!r}"
+
+        resolved = panel._canonical_source_step_id("Analyzer (2)")
+        assert resolved == "s2", f"Expected 's2', got {resolved!r}"
 
     def test_canonical_resolution_title_only_unique(self):
         """When labels are unique, title-only input resolves correctly."""

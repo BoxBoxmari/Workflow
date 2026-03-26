@@ -53,7 +53,7 @@ WORKBENCH_SUBSCRIPTION_KEY=your-key
 WORKBENCH_CHARGE_CODE=your-code
 ```
 
-> ⚠️ The application will still read credentials from `config/provider.json` as a deprecated fallback, but will log a warning. Migrate to the secure store for production use.
+> ⚠️ Plaintext credentials in `config/provider.json` are ignored. Use OS Credential Manager (`keyring`) or environment variables.
 
 ## Provider Configuration
 
@@ -108,7 +108,8 @@ Check the default workflows dropdown for built-in examples (from `config/workflo
 
 - The graph must be a Directed Acyclic Graph (DAG) — loops/cycles are not supported.
 - Dynamic graph structure mutations during runtime are not permitted.
-- Legacy workflows execute sequentially even when the Graph Runtime is enabled.
+- Runtime engine selection is controlled by the global **Enable Graph Runtime** toggle.
+- Step-level `execution_mode` is retained for authoring metadata and mismatch warnings in the inspector.
 
 ## Architecture
 

@@ -306,6 +306,6 @@ def test_simple_mode_hides_internal_ids_and_ports(app_root):
         for w in _walk_widgets(panel.io_container)
         if w.__class__.__name__ == "CTkLabel"
     ]
-    assert "← upstream_step" in label_texts
+    assert "← u1" in label_texts
     assert all("·" not in text for text in label_texts)
     assert all("(u1)" not in text for text in label_texts)

@@ -74,7 +74,8 @@ The architecture should be considered valid only if the following checks pass:
 2. UI code does not hide orchestration logic.
 3. Storage remains file-based.
 4. Workflow remains sequential.
-5. File support does not exceed the documented limits.
+5. Runtime engine selection follows the global Graph Runtime toggle; step-level `execution_mode` is metadata/warning only.
+6. File support does not exceed the documented limits.
 6. New dependencies remain justified and exceptional.
 
 ## Drift Indicators

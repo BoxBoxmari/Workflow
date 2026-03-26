@@ -69,36 +69,13 @@ class WorkbenchClient:
 
         Credential resolution priority:
           1. OS Credential Manager / environment variables (via SecureCredentialStore)
-          2. Values in the config dict (deprecated plaintext fallback)
-
-        A deprecation warning is logged when credentials come from the config
-        file to encourage migration to the secure store.
+          2. Empty string if unavailable (caller decides readiness)
         """
-        import logging
         from config.secure_credentials import SecureCredentialStore
 
-        log = logging.getLogger(__name__)
-
         # Attempt secure credential resolution first
-        subscription_key = SecureCredentialStore.get_api_key()
-        charge_code = SecureCredentialStore.get_charge_code()
-
-        # Fall back to plaintext config values if secure store has nothing
-        if subscription_key is None:
-            subscription_key = config.get("subscription_key", "")
-            if subscription_key:
-                log.warning(
-                    "SECURITY: subscription_key loaded from plaintext config file. "
-                    "Migrate to OS Credential Manager via SecureCredentialStore.set_api_key()."
-                )
-
-        if charge_code is None:
-            charge_code = config.get("charge_code", "")
-            if charge_code:
-                log.warning(
-                    "SECURITY: charge_code loaded from plaintext config file. "
-                    "Migrate to OS Credential Manager via SecureCredentialStore.set_charge_code()."
-                )
+        subscription_key = SecureCredentialStore.get_api_key() or ""
+        charge_code = SecureCredentialStore.get_charge_code() or ""
 
         default_ver = config.get("default_api_version") or config.get(
             "api_version", "2024-06-01"

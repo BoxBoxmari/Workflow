@@ -19,13 +19,13 @@ All artifacts must preserve the same baseline constraints:
 - `tkinter` / `ttk` primary UI
 - local file persistence only
 - no database
-- sequential workflow only
+- runtime engine is selected by global Graph Runtime toggle (graph or legacy)
 
 ### Rule 3 — Same capability map
 Artifacts must remain consistent about the product’s core capabilities:
 - model comparison
 - prompt comparison
-- sequential workflow execution
+- workflow execution with global runtime toggle (legacy or graph)
 - practical file ingestion
 - trace inspection and run history
 

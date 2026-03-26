@@ -6,7 +6,7 @@ This document defines the main user and system flows for the Workflow MVP.
 The workbench supports five primary validation flows:
 1. Single-step model comparison
 2. Single-step prompt comparison
-3. End-to-end sequential workflow execution
+3. End-to-end workflow execution (global runtime toggle: legacy or graph)
 4. File ingestion and normalization review
 5. Run history and trace inspection
 
@@ -54,7 +54,7 @@ Compare prompt versions on the same task while keeping model and input constant.
 - Prompt identity and version are persisted with results.
 - Comparison is reproducible from local artifacts.
 
-## Flow 3 — Sequential Workflow Execution
+## Flow 3 — Workflow Execution (Legacy/Graph)
 ### User goal
 Run a defined workflow step by step and inspect how outputs pass between steps.
 
@@ -79,7 +79,7 @@ Each step should expose:
 - `enabled`
 
 ### Acceptance criteria
-- Only sequential execution is supported.
+- Effective runtime engine is controlled by the global Graph Runtime toggle.
 - Each step can be inspected independently.
 - Failures are visible and do not silently disappear.
 - Step outputs are mapped explicitly into subsequent steps.

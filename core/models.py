@@ -149,11 +149,11 @@ class StepDef:
         """Generate an output variable name from the step title.
 
         'Customer Summary' → 'customer_summary'
-        Falls back to step.name if title is empty.
+        Falls back to step.id if title is empty.
         """
         import re
 
-        base = (self.title or self.name).strip()
+        base = (self.title or self.id).strip()
         slug = re.sub(r"[^\w\s]", "", base.lower())  # strip punctuation
         slug = re.sub(r"\s+", "_", slug).strip("_")
         return slug or "output"

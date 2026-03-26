@@ -8,6 +8,7 @@ import tkinter as tk
 import customtkinter as ctk
 
 from ui import theme as T
+from ui import dialogs
 from ui.workspace_controller import WorkspaceController
 
 _PAGE_SIZE = 20
@@ -208,6 +209,14 @@ class SidebarPanel(ctk.CTkFrame):
                 widget.bind(
                     "<Button-1>", lambda e, wid=wf_id: self.ctrl.select_workflow(wid)
                 )
+                widget.bind(
+                    "<Button-3>",
+                    lambda e, wid=wf_id: self._show_workflow_context_menu(e, wid),
+                )
+                widget.bind(
+                    "<Double-Button-1>",
+                    lambda e, wid=wf_id: self._show_workflow_rename_modal(wid),
+                )
 
             self._wf_cards[wf_id] = card
 
@@ -308,3 +317,92 @@ class SidebarPanel(ctk.CTkFrame):
 
     def _on_run_select(self, event) -> None:
         pass
+
+    # ------------------------------------------------------------------
+    # Workflow rename UI (context menu + double-click)
+    # ------------------------------------------------------------------
+
+    def _show_workflow_context_menu(self, event: tk.Event, workflow_id: str) -> None:
+        def _on_rename() -> None:
+            self._show_workflow_rename_modal(workflow_id)
+
+        menu = tk.Menu(
+            self,
+            tearoff=0,
+            bg=T.CLR_SURFACE,
+            fg="#f8fafc",
+            activebackground=T.CLR_SELECTED,
+            activeforeground="#ffffff",
+        )
+        menu.add_command(label="Rename", command=_on_rename)
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
+
+    def _show_workflow_rename_modal(self, workflow_id: str) -> None:
+        wf = self.ctrl.state.workflow_drafts.get(workflow_id)
+        initial_name = (wf.name or wf.id) if wf else workflow_id
+
+        modal = ctk.CTkToplevel(self)
+        modal.title("Rename Workflow")
+        modal.geometry("420x170")
+        modal.transient(self.winfo_toplevel())
+        modal.grab_set()
+        modal.resizable(False, False)
+
+        name_var = tk.StringVar(value=initial_name)
+
+        ctk.CTkLabel(
+            modal, text="Workflow name:", font=T.FONT_BODY, anchor="w"
+        ).pack(fill=tk.X, padx=T.PAD_LG, pady=(T.PAD_LG, 0))
+
+        entry = ctk.CTkEntry(modal, textvariable=name_var, width=320)
+        entry.pack(fill=tk.X, padx=T.PAD_LG, pady=(6, 0))
+        entry.select_range(0, tk.END)
+        entry.focus_set()
+
+        btn_row = ctk.CTkFrame(modal, fg_color="transparent")
+        btn_row.pack(fill=tk.X, padx=T.PAD_LG, pady=(T.PAD_LG, 0))
+
+        def _on_cancel() -> None:
+            modal.destroy()
+
+        def _on_submit() -> None:
+            new_name = (name_var.get() or "").strip()
+            if not new_name:
+                dialogs.show_error(
+                    "Rename Workflow", "Tên workflow không được để trống."
+                )
+                return
+
+            ok = self.ctrl.rename_workflow(workflow_id, new_name)
+            if not ok:
+                dialogs.show_error(
+                    "Rename Workflow",
+                    "Không thể đổi tên workflow (tên không hợp lệ hoặc không có thay đổi).",
+                )
+                return
+
+            modal.destroy()
+
+        ctk.CTkButton(
+            btn_row,
+            text="Cancel",
+            width=100,
+            fg_color=T.CLR_SURFACE,
+            hover_color=T.CLR_BORDER,
+            command=_on_cancel,
+            font=T.FONT_BODY,
+        ).pack(side=tk.LEFT, padx=(0, T.PAD_SM))
+
+        ctk.CTkButton(
+            btn_row,
+            text="Rename",
+            width=110,
+            fg_color=T.CLR_SELECTED,
+            hover_color=T.CLR_BORDER,
+            text_color="#f8fafc",
+            command=_on_submit,
+            font=T.FONT_BODY,
+        ).pack(side=tk.RIGHT)

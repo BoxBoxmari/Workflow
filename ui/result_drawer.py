@@ -187,7 +187,9 @@ class ResultDrawer(ctk.CTkFrame):
                 f"Timestamp:    {m.timestamp}"
             )
 
-            log_text = f"Step ID: {sr.step_id}\nStatus: {sr.status.upper()}\n"
+            # Use user-facing titles only; never expose internal step ids like step_****.
+            log_step_title = (getattr(sr, "step_name", "") or "").strip() or "Untitled step"
+            log_text = f"Step: {log_step_title}\nStatus: {sr.status.upper()}\n"
             if sr.error:
                 log_text += f"\nError Details:\n{sr.error}\n"
             results[DrawerTab.LOG.value] = log_text
@@ -195,9 +197,12 @@ class ResultDrawer(ctk.CTkFrame):
             # --- New Tabs for Graph Mode ---
             step_def = self.ctrl.state.get_selected_step()
             mode_str = step_def.execution_mode if step_def else "unknown"
+            step_title = "Untitled step"
+            if step_def:
+                t = (getattr(step_def, "title", "") or "").strip()
+                step_title = t or "Untitled step"
             results[DrawerTab.SUMMARY.value] = (
-                f"Step Name:      {sr.step_name}\n"
-                f"Step ID:        {sr.step_id}\n"
+                f"Step Title:     {step_title}\n"
                 f"Status:         {sr.status.upper()}\n"
                 f"Execution Mode: {mode_str}\n"
             )
@@ -215,8 +220,15 @@ class ResultDrawer(ctk.CTkFrame):
             if step_def and step_def.execution_mode == "graph":
                 for p in step_def.inputs:
                     for s in p.sources:
+                        src_def = self.ctrl.state.get_step_by_id(s.step_id)
+                        src_title = (
+                            (getattr(src_def, "title", "") or "").strip()
+                            if src_def
+                            else ""
+                        )
+                        src_title = src_title or "Untitled step"
                         prov_lines.append(
-                            f"[{s.step_id}].{s.port} → [{step_def.id}].{p.name}"
+                            f"[{src_title}].{s.port} → [{step_title}].{p.name}"
                         )
 
             results[DrawerTab.PROVENANCE.value] = (

@@ -15,7 +15,15 @@
           "output_mapping": "analysis",
           "depends_on": [],
           "enabled": true,
-          "attachments": [],
+          "attachments": [
+            {
+              "slot_id": "slot_47280dc9",
+              "variable_name": "analyze_slot_47280dc9",
+              "label": "Tệp đính kèm",
+              "required": false,
+              "accepted_types": null
+            }
+          ],
           "title": "",
           "purpose": "",
           "ui": {},

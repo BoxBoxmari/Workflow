@@ -55,7 +55,7 @@ class TestUIViewModels(unittest.TestCase):
 
         node2 = nodes[1]
         self.assertEqual(node2.step_id, "step2")
-        self.assertEqual(node2.title, "summarize")  # fallback to name
+        self.assertEqual(node2.title, "summarize")  # fallback to step.name (non-internal)
         self.assertEqual(node2.upstream_title, "Input Step")
         self.assertEqual(node2.downstream_title, "Ends here")
 

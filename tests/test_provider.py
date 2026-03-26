@@ -104,8 +104,36 @@ class TestWorkbenchClient(unittest.TestCase):
             "subscription_key": "key",
             "charge_code": "code",
         }
-        client = WorkbenchClient.from_config(config)
+        with patch(
+            "config.secure_credentials.SecureCredentialStore.get_api_key",
+            return_value="secure-key",
+        ), patch(
+            "config.secure_credentials.SecureCredentialStore.get_charge_code",
+            return_value="secure-code",
+        ):
+            client = WorkbenchClient.from_config(config)
+
         self.assertEqual(client.base_url, "https://test.local")
+        self.assertEqual(client._session.headers["Ocp-Apim-Subscription-Key"], "secure-key")
+        self.assertEqual(client._session.headers["x-kpmg-charge-code"], "secure-code")
+
+    def test_from_config_ignores_plaintext_fallback(self):
+        config = {
+            "base_url": "https://test.local",
+            "subscription_key": "plaintext-key",
+            "charge_code": "plaintext-code",
+        }
+        with patch(
+            "config.secure_credentials.SecureCredentialStore.get_api_key",
+            return_value=None,
+        ), patch(
+            "config.secure_credentials.SecureCredentialStore.get_charge_code",
+            return_value=None,
+        ):
+            client = WorkbenchClient.from_config(config)
+
+        self.assertEqual(client._session.headers["Ocp-Apim-Subscription-Key"], "")
+        self.assertEqual(client._session.headers["x-kpmg-charge-code"], "")
 
     def test_from_config_default_api_version_and_model_overrides(self):
         config = {

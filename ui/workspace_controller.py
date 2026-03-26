@@ -10,6 +10,7 @@ directly access services or mutate state.
 from __future__ import annotations
 
 import logging
+import re
 import threading
 import uuid
 from pathlib import Path
@@ -36,6 +37,7 @@ from core.prompts import PromptRegistry
 from core.session import SessionState, load_session, save_session
 from core.storage import StorageManager
 from core.workflow import WorkflowRunner
+from ui import dialogs
 from ui.viewmodels import build_flow_viewmodel, build_inspector_viewmodel
 from ui.workspace_state import WorkspaceState
 
@@ -341,6 +343,23 @@ class WorkspaceController:
             self.state.selected_step_id = None
             self._notify()
 
+    def rename_workflow(self, workflow_id: str, new_name: str) -> bool:
+        wf = self.state.workflow_drafts.get(workflow_id)
+        if not wf:
+            return False
+
+        s = (new_name or "").strip()
+        if not s:
+            return False
+
+        if wf.name == s:
+            return False
+
+        wf.name = s
+        self.state.is_dirty = True
+        self._notify()
+        return True
+
     # ------------------------------------------------------------------
     # Step management (command-based for undo/redo)
     # ------------------------------------------------------------------
@@ -448,9 +467,12 @@ class WorkspaceController:
         self.state.is_dirty = True
         # No full notify for typing performance
 
-    def update_manual_input(self, text: str) -> None:
+    def update_manual_input(self, text: str | None) -> None:
         """Store the user-supplied workflow input text that will be passed to the runner."""
-        self.state.manual_input = text or ""
+        s = text or ""
+        s = s.replace("\r\n", "\n").replace("\r", "\n")
+        s = re.sub(r"\n{3,}", "\n\n", s)
+        self.state.manual_input = s.strip()
 
     # ------------------------------------------------------------------
     # Step ordering (replaces Move Lane — now vertical Up/Down)
@@ -642,7 +664,7 @@ class WorkspaceController:
         if not step:
             return
         cmd = AddInputSourceCommand(
-            label=f"Connect {step.name}:{input_port}",
+            label=f"Connect {(step.title or step.id)}:{input_port}",
             step=step,
             port_name=input_port,
             source=SourceRef(step_id=source_step_id, port=source_port),
@@ -664,7 +686,7 @@ class WorkspaceController:
         if not step:
             return
         cmd = RemoveInputSourceCommand(
-            label=f"Disconnect {step.name}:{input_port}",
+            label=f"Disconnect {(step.title or step.id)}:{input_port}",
             step=step,
             port_name=input_port,
             source_index=source_index,
@@ -968,10 +990,9 @@ class WorkspaceController:
         critical_errors = [e for e in wf_errors if e.level == "error"]
         if critical_errors:
             msg = "\n".join(f"- {e.message}" for e in critical_errors)
-            from tkinter import messagebox
 
             log.warning("Cannot start run, workflow is invalid:\n%s", msg)
-            messagebox.showerror(
+            dialogs.show_error(
                 "Workflow Error", f"Cannot run this workflow due to errors:\n{msg}"
             )
             return False
@@ -986,7 +1007,7 @@ class WorkspaceController:
                 if not path and slot.required:
                     missing_required.append(
                         "Step "
-                        f"'{step.title or step.name}': "
+                        f"'{step.title or step.id}': "
                         f"missing required attachment {slot.label}"
                     )
                 elif path:
@@ -1002,9 +1023,8 @@ class WorkspaceController:
             log.warning(
                 "Cannot start run, missing required attachments: %s", missing_required
             )
-            from tkinter import messagebox
 
-            messagebox.showerror(
+            dialogs.show_error(
                 "Missing Attachments",
                 "Cannot run workflow. Please attach the following required files:\n\n"
                 + "\n".join(f"  • {m}" for m in missing_required),
@@ -1025,6 +1045,7 @@ class WorkspaceController:
             # Kick off background execution
             self._start_runner(
                 workflow_def=wf,
+                initial_input=self.state.manual_input,
                 initial_variables=variables,
             )
         else:
@@ -1045,19 +1066,15 @@ class WorkspaceController:
         return True
 
     def _resolve_run_engine_mode(self, wf: WorkflowDef) -> str:
-        """Resolve effective runtime mode with step-level declarations as source-of-truth."""
+        """
+        Resolve effective runtime mode from the global runtime toggle.
 
-        def _normalize_mode(mode: str) -> str:
-            return "legacy" if mode == "sequential" else mode
-
-        step_modes = {
-            _normalize_mode(getattr(step, "execution_mode", "legacy"))
-            for step in wf.steps
-        }
-        if "graph" in step_modes:
-            return "graph"
-        if "legacy" in step_modes:
-            return "legacy"
+        ARCH-004 policy:
+        - WorkspaceState.enable_graph_runtime is the single source of truth for
+          selecting the runner engine at run time.
+        - Step-level execution_mode is retained for authoring metadata and
+          mismatch warnings only.
+        """
         return "graph" if self.state.enable_graph_runtime else "legacy"
 
     def _report_execution_mode_mismatch(self, wf: WorkflowDef) -> None:
@@ -1068,7 +1085,7 @@ class WorkspaceController:
         (WorkspaceState.enable_graph_runtime) and per-step StepDef.execution_mode.
         This function intentionally does not change runtime behavior.
         """
-        expected_mode = self._resolve_run_engine_mode(wf)
+        expected_mode = "graph" if self.state.enable_graph_runtime else "legacy"
 
         def _normalize_mode(mode: str) -> str:
             # Backward-compatible alias: "sequential" maps to legacy execution.
