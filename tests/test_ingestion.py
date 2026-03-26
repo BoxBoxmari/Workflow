@@ -198,5 +198,116 @@ class TestIngestionMissing(unittest.TestCase):
         self.assertIn("not found", result.error)
 
 
+class TestIngestionSignatureValidation(unittest.TestCase):
+    """Tests for MIME/signature validation (RISK-002 hardening)."""
+
+    def test_binary_renamed_as_txt_warns(self):
+        """A binary file renamed as .txt should produce validation warning."""
+        with tempfile.NamedTemporaryFile(suffix=".txt", mode="wb", delete=False) as f:
+            # Write PNG signature (binary)
+            f.write(b"\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR")
+            f.flush()
+            result = ingest_file(f.name)
+        # Should parse but with warnings
+        self.assertTrue(result.ok)  # In warn mode, still ok
+        self.assertTrue(result.has_validation_issues)
+        self.assertFalse(result.signature_ok)
+        self.assertEqual(result.signature_type, "binary")
+        self.assertTrue(any("binary data" in w for w in result.validation_warnings))
+
+    def test_legitimate_txt_passes(self):
+        """A real text file should pass validation."""
+        with tempfile.NamedTemporaryFile(
+            suffix=".txt", mode="w", encoding="utf-8", delete=False
+        ) as f:
+            f.write("Hello, this is a legitimate text file.\nLine 2.\n")
+            f.flush()
+            result = ingest_file(f.name)
+        self.assertTrue(result.ok)
+        self.assertFalse(result.has_validation_issues)
+        self.assertTrue(result.signature_ok)
+        self.assertEqual(result.signature_type, "text")
+
+    def test_ooxml_spoofed_zip_warns(self):
+        """A ZIP without OOXML structure renamed as .docx should warn."""
+        with tempfile.NamedTemporaryFile(suffix=".docx", mode="wb", delete=False) as f:
+            # Create a valid ZIP but without OOXML structure
+            import zipfile as zf_module
+
+            with zf_module.ZipFile(f.name, "w") as zf:
+                zf.writestr("random.txt", "not an ooxml file")
+            result = ingest_file(f.name)
+        # Should have warnings about missing OOXML structure
+        self.assertTrue(result.has_validation_issues)
+        self.assertTrue(
+            any("OOXML" in w or "internal structure" in w for w in result.warnings)
+        )
+
+    def test_valid_docx_passes(self):
+        """A valid OOXML document should pass signature validation."""
+        with tempfile.NamedTemporaryFile(suffix=".docx", mode="wb", delete=False) as f:
+            # Create a minimal valid OOXML structure
+            import zipfile as zf_module
+
+            with zf_module.ZipFile(f.name, "w") as zf:
+                zf.writestr("[Content_Types].xml", "<?xml version=\"1.0\"?><Types/>")
+                zf.writestr("_rels/.rels", "<?xml version=\"1.0\"?><Relationships/>")
+            result = ingest_file(f.name)
+        # Valid OOXML structure should pass signature validation
+        # Note: result.ok may be False because skeleton docx has no content to parse,
+        # but signature validation should succeed (no signature warnings/errors)
+        self.assertTrue(result.signature_ok)
+        self.assertEqual(result.detected_signature, "ZIP")
+        self.assertEqual(result.signature_type, "zip")
+        # Should not have validation issues for a valid OOXML structure
+        self.assertFalse(result.has_validation_issues)
+
+    def test_content_truncation_warning(self):
+        """Files larger than 100KB should produce truncation warning."""
+        with tempfile.NamedTemporaryFile(
+            suffix=".txt", mode="w", encoding="utf-8", delete=False
+        ) as f:
+            # Write >100KB of text
+            f.write("x" * (100 * 1024 + 1000))
+            f.flush()
+            result = ingest_file(f.name)
+        self.assertTrue(result.ok)
+        self.assertTrue(any("truncated" in w for w in result.warnings))
+        self.assertEqual(len(result.content), 100 * 1024)  # Truncated to exactly 100KB
+
+    def test_empty_file_treated_as_text(self):
+        """Empty files should be treated as text and pass validation."""
+        with tempfile.NamedTemporaryFile(suffix=".txt", mode="w", delete=False) as f:
+            f.write("")  # Empty
+            f.flush()
+            result = ingest_file(f.name)
+        self.assertTrue(result.ok)
+        self.assertEqual(result.signature_type, "unknown")
+
+    def test_strict_mode_rejects_spoofed_binary(self):
+        """In strict mode, binary renamed as text should be rejected."""
+        with tempfile.NamedTemporaryFile(suffix=".txt", mode="wb", delete=False) as f:
+            f.write(b"\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR")
+            f.flush()
+            result = ingest_file(f.name, validation_mode="strict")
+        # In strict mode, should not be ok
+        self.assertFalse(result.ok)
+        self.assertTrue(result.has_validation_issues)
+
+    def test_signature_metadata_populated(self):
+        """All IngestResult signature fields should be populated correctly."""
+        with tempfile.NamedTemporaryFile(
+            suffix=".json", mode="w", encoding="utf-8", delete=False
+        ) as f:
+            f.write('{"key": "value"}')
+            f.flush()
+            result = ingest_file(f.name)
+        self.assertTrue(result.ok)
+        self.assertIsNotNone(result.detected_mime)
+        self.assertIsNotNone(result.detected_signature)
+        self.assertTrue(result.signature_ok)
+        self.assertEqual(result.validation_mode, "warn")
+
+
 if __name__ == "__main__":
     unittest.main()

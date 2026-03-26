@@ -75,8 +75,38 @@ This allows you to trace both:
 - Both **Simple mode** (Flow Canvas modal) and **Advanced mode** (Inspector attachments) support selecting **multiple files** in one action.
 - First selected file is bound to the current slot; additional files are auto-bound by creating new slots on the same step.
 - UX guard is applied to prevent slot explosion:
-  - Max **5 files per one attach action**.
-  - Max **12 attachment slots per step**.
+- Max **5 files per one attach action**.
+- Max **12 attachment slots per step**.
+
+#### File validation (MIME/signature)
+
+Files are validated before ingestion to detect spoofed or mis-identified content:
+
+- **MIME type detection**: Detects actual content type from file bytes (not just extension).
+- **Signature validation**: Checks magic bytes to verify declared extension matches actual format.
+- **Validation modes**:
+  - `warn` (default): Warnings shown but ingestion proceeds.
+  - `strict`: Files with signature mismatches are rejected.
+- **Detected fields in events**: `detected_mime`, `detected_signature`, `signature_ok`, `signature_type`.
+
+#### Bulk attach (for 20+ files)
+
+For large batch uploads (exceeding the quick-attach limits), use the **"Bulk attach..."** flow:
+
+1. Click the **+** button on a step card and select **"Bulk attach files..."**.
+2. Select 20-100+ files in the file dialog.
+3. Review the validation table showing:
+   - File count, total size
+   - Per-file status (✓ ready, ⚠ warning, ✗ error, 🔄 duplicate)
+   - MIME/signature warnings
+4. Configure mapping:
+   - **One slot per file** (default): Creates individual slots for each selected file.
+   - **Combined slot**: Merges all files into a single variable.
+5. Apply to step. The system will:
+   - Skip duplicates (based on policy)
+   - Respect the 12-slot limit
+   - Emit `attachment_ingested` events with validation metadata
+
 - A **Delete file** action is available in both modes and removes the physical file binding from the slot.
 
 ### Attachment ingestion validation

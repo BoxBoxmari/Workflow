@@ -397,16 +397,39 @@ class RunContext:
 
 @dataclass
 class IngestResult:
-    """Result of ingesting a local file."""
+    """Result of ingesting a local file.
+
+    Includes MIME/signature validation metadata to detect spoofed or
+    mis-identified files (e.g., a binary renamed as .txt).
+    """
 
     content: str = ""
     metadata: dict = field(default_factory=dict)  # filename, type, size, etc.
     warnings: list[str] = field(default_factory=list)
     error: Optional[str] = None
 
+    # MIME/signature validation (added for RISK-002 hardening)
+    detected_mime: Optional[str] = None  # MIME type detected from content
+    detected_signature: Optional[str] = None  # Magic bytes signature name
+    signature_ok: bool = True  # Whether signature matches declared extension
+    signature_type: str = "unknown"  # "text", "binary", "zip", "unknown"
+    validation_mode: str = "warn"  # "off", "warn", "strict"
+    validation_warnings: list[str] = field(default_factory=list)
+    validation_errors: list[str] = field(default_factory=list)
+
     @property
     def ok(self) -> bool:
-        return self.error is None
+        """Return True if no hard error and validation passed (or was skipped)."""
+        if self.error is not None:
+            return False
+        if self.validation_mode == "strict" and self.validation_errors:
+            return False
+        return True
+
+    @property
+    def has_validation_issues(self) -> bool:
+        """Return True if any validation warnings or errors exist."""
+        return bool(self.validation_warnings or self.validation_errors)
 
 
 # ---------------------------------------------------------------------------

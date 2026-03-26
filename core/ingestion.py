@@ -16,6 +16,7 @@ import re
 import defusedxml.ElementTree as ET
 import zipfile
 from pathlib import Path
+from typing import Optional
 
 from core.models import IngestResult
 
@@ -23,8 +24,179 @@ from core.models import IngestResult
 # Maximum content size to load (bytes) — guard against very large files
 _MAX_CONTENT_BYTES = 100 * 1024  # 100 KB of text
 
+# Default validation mode for ingestion
+_DEFAULT_VALIDATION_MODE = "warn"  # "off", "warn", "strict"
 
-def ingest_file(filepath: str | Path) -> IngestResult:
+# Magic byte signatures for common file types
+# Format: (signature_bytes, offset, signature_name, file_type_category)
+_SIGNATURES = [
+    # ZIP-based formats (OOXML, etc.)
+    (b"PK\x03\x04", 0, "ZIP", "zip"),
+    (b"PK\x05\x06", 0, "ZIP_EMPTY", "zip"),  # Empty zip
+    (b"PK\x07\x08", 0, "ZIP_SPANNED", "zip"),  # Spanned zip
+    # PDF
+    (b"%PDF-", 0, "PDF", "binary"),
+    # Common image formats (for detection, not parsing)
+    (b"\x89PNG\r\n\x1a\n", 0, "PNG", "binary"),
+    (b"\xff\xd8\xff", 0, "JPEG", "binary"),
+    (b"GIF87a", 0, "GIF", "binary"),
+    (b"GIF89a", 0, "GIF", "binary"),
+    # Executable formats
+    (b"MZ", 0, "EXE", "binary"),  # Windows executable
+    (b"\x7fELF", 0, "ELF", "binary"),  # Linux executable
+    # UTF BOMs (text markers)
+    (b"\xef\xbb\xbf", 0, "UTF8_BOM", "text"),  # UTF-8 BOM
+    (b"\xff\xfe", 0, "UTF16_LE_BOM", "text"),  # UTF-16 LE BOM
+    (b"\xfe\xff", 0, "UTF16_BE_BOM", "text"),  # UTF-16 BE BOM
+]
+
+# Extension to expected signature mapping
+_EXTENSION_SIGNATURE_EXPECTATIONS = {
+    ".docx": ("zip", "OOXML document"),
+    ".xlsx": ("zip", "OOXML spreadsheet"),
+    ".pptx": ("zip", "OOXML presentation"),
+    ".pdf": ("binary", "PDF document"),
+    ".txt": ("text", "Plain text"),
+    ".json": ("text", "JSON"),
+    ".xml": ("text", "XML"),
+    ".csv": ("text", "CSV"),
+}
+
+
+def _detect_signature(path: Path) -> tuple[Optional[str], Optional[str], bool]:
+    """
+    Detect file signature from magic bytes.
+
+    Returns:
+        (signature_name, signature_type, is_text_file)
+        - signature_name: Name of detected signature or None
+        - signature_type: "text", "binary", "zip", or "unknown"
+        - is_text_file: Whether the file appears to be text (based on encoding detection)
+    """
+    try:
+        # Read first 16 bytes for signature detection
+        with open(path, "rb") as f:
+            header = f.read(16)
+    except Exception:
+        return (None, None, False)
+
+    if not header:
+        return (None, "unknown", True)  # Empty file treated as text (safe default)
+
+    # Check for known signatures
+    for sig_bytes, offset, sig_name, sig_type in _SIGNATURES:
+        if len(header) >= offset + len(sig_bytes):
+            if header[offset:offset + len(sig_bytes)] == sig_bytes:
+                return (sig_name, sig_type, sig_type == "text")
+
+    # No magic signature found - try to detect if it's text by checking for binary content
+    try:
+        # Attempt to decode as UTF-8 (allowing some error tolerance)
+        with open(path, "rb") as f:
+            sample = f.read(4096)  # Sample first 4KB
+        sample.decode("utf-8", errors="strict")
+        return ("TEXT_UTF8", "text", True)
+    except UnicodeDecodeError:
+        # Contains binary data
+        return ("BINARY_DATA", "binary", False)
+    except Exception:
+        return (None, "unknown", False)
+
+
+def _validate_signature(
+    path: Path,
+    ext: str,
+    detected_sig: Optional[str],
+    detected_type: Optional[str],
+    validation_mode: str = "warn",
+) -> tuple[list[str], list[str], bool]:
+    """
+    Validate that detected signature matches expected signature for extension.
+
+    Args:
+        validation_mode: "warn" adds issues to warnings; "strict" adds to errors
+
+    Returns:
+        (validation_warnings, validation_errors, signature_ok)
+    """
+    warnings: list[str] = []
+    errors: list[str] = []
+    signature_ok = True
+
+    # Get expectations for this extension
+    expected = _EXTENSION_SIGNATURE_EXPECTATIONS.get(ext)
+    if expected is None:
+        # Unknown extension - warn but don't block
+        msg = f"Unknown file type: {ext}. Proceeding with best-effort parsing."
+        if validation_mode == "strict":
+            errors.append(msg)
+        else:
+            warnings.append(msg)
+        return (warnings, errors, signature_ok)
+
+    expected_type, expected_desc = expected
+
+    # Helper to add issue based on mode
+    def add_issue(msg: str) -> None:
+        nonlocal signature_ok
+        signature_ok = False
+        if validation_mode == "strict":
+            errors.append(msg)
+        else:
+            warnings.append(msg)
+
+    # Special case: ZIP-based formats need ZIP signature
+    if expected_type == "zip":
+        if detected_type != "zip":
+            add_issue(
+                f"File extension claims {expected_desc} but content is not a valid ZIP archive."
+            )
+        else:
+            # Additional check: OOXML files need specific internal structure
+            if not _is_valid_ooxml(path):
+                add_issue(
+                    "File appears to be ZIP but missing required "
+                    f"{expected_desc} internal structure."
+                )
+
+    # Special case: PDF should be binary with PDF signature
+    elif expected_type == "binary" and ext == ".pdf":
+        if detected_sig != "PDF":
+            add_issue(
+                "File extension is .pdf but content does not appear "
+                "to be a valid PDF document."
+            )
+
+    # Text formats should have text signature (or no signature is OK if content is text)
+    elif expected_type == "text":
+        if detected_type == "binary":
+            add_issue(
+                f"File extension claims {expected_desc} but content appears to be binary data."
+            )
+
+    return (warnings, errors, signature_ok)
+
+
+def _is_valid_ooxml(path: Path) -> bool:
+    """Check if a ZIP file has the internal structure of a valid OOXML document."""
+    try:
+        with zipfile.ZipFile(str(path), "r") as zf:
+            namelist = zf.namelist()
+            # Check for required OOXML structure
+            # [Content_Types].xml must exist
+            if "[Content_Types].xml" not in namelist:
+                return False
+            # Check for relationships
+            if "_rels/.rels" not in namelist:
+                return False
+            return True
+    except Exception:
+        return False
+
+
+def ingest_file(
+    filepath: str | Path, validation_mode: str = _DEFAULT_VALIDATION_MODE
+) -> IngestResult:
     """
     Ingest a local file and return normalized text content.
 
@@ -65,9 +237,47 @@ def ingest_file(filepath: str | Path) -> IngestResult:
             error=f"Unsupported file type: {ext}",
         )
 
+    # Detect MIME/signature before parsing (RISK-002 hardening)
+    detected_sig, detected_type, _ = _detect_signature(path)
+
+    # Validate signature against declared extension
+    val_warnings, val_errors, sig_ok = _validate_signature(
+        path, ext, detected_sig, detected_type, validation_mode
+    )
+
+    # Apply validation mode policy
+    if validation_mode == "strict":
+        if val_errors:
+            return IngestResult(
+                metadata=metadata,
+                error=f"Signature validation failed for {path.name}: {'; '.join(val_errors)}",
+                detected_signature=detected_sig,
+                detected_mime=detected_type,
+                signature_ok=sig_ok,
+                signature_type=detected_type or "unknown",
+                validation_mode=validation_mode,
+                validation_warnings=val_warnings,
+                validation_errors=val_errors,
+            )
+    # In "warn" mode, continue but capture warnings
+
     try:
         result = parser(path)
         result.metadata.update(metadata)
+
+        # Enrich result with MIME/signature validation metadata
+        result.detected_signature = detected_sig
+        result.detected_mime = detected_type
+        result.signature_ok = sig_ok
+        result.signature_type = detected_type or "unknown"
+        result.validation_mode = validation_mode
+        result.validation_warnings = val_warnings
+        result.validation_errors = val_errors
+
+        # Add parser warnings to combined warnings
+        if val_warnings:
+            result.warnings.extend(val_warnings)
+
         if result.content:
             result.content = _normalize_content(result.content)
         # Truncate if too large
@@ -81,6 +291,13 @@ def ingest_file(filepath: str | Path) -> IngestResult:
         return IngestResult(
             metadata=metadata,
             error=f"Failed to parse {path.name}: {e}",
+            detected_signature=detected_sig,
+            detected_mime=detected_type,
+            signature_ok=sig_ok,
+            signature_type=detected_type or "unknown",
+            validation_mode=validation_mode,
+            validation_warnings=val_warnings,
+            validation_errors=val_errors,
         )
 
 

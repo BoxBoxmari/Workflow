@@ -1,4 +1,33 @@
-## [Unreleased] — 2026-03-20
+# Changelog
+
+## [Unreleased] — 2026-03-26
+
+### Added
+
+- `docs/design/bulk-attach-flow.md` — Dedicated UX/architecture design for large-batch attachment uploads, separated from quick-attach hard limits.
+
+### Changed
+
+- `core/models.py` — Extended `IngestResult` with MIME/signature validation metadata:
+  - `detected_mime`, `detected_signature`, `signature_ok`, `signature_type`
+  - `validation_mode`, `validation_warnings`, `validation_errors`
+  - Added `has_validation_issues` convenience property.
+- `core/ingestion.py` — Added stronger file-validation pipeline:
+  - Magic-byte signature detection
+  - Extension/signature consistency checks
+  - OOXML ZIP-structure validation for `.docx/.xlsx/.pptx`
+  - Configurable validation mode behavior (`off|warn|strict`) with strict-mode rejection on signature validation errors.
+- `docs_guideline/user-manual.md` — Updated attachment section with:
+  - MIME/signature validation behavior and validation modes
+  - Dedicated bulk-attach UX flow guidance.
+
+### Tests
+
+- `tests/test_ingestion.py` — Added signature-validation regression coverage:
+  - spoofed extension detection
+  - strict-mode rejection behavior
+  - valid OOXML signature acceptance
+  - metadata propagation and truncation checks.
 
 ### Fixed (Phase 3 Completion)
 
