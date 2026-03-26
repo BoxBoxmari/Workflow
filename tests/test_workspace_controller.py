@@ -340,6 +340,145 @@ def test_attach_files_to_slot_applies_multi_file_guard_limits(tmp_path):
     assert len(ctrl.state.attachment_bindings) == 5
 
 
+def test_delete_attached_file_deletes_physical_file_and_removes_binding(tmp_path):
+    ctrl = make_mock_ctrl()
+
+    # delete_attached_file uses slot_key => state.attachment_bindings[slot_key] = file path
+    slot_key = "s1::fileA"
+    f = tmp_path / "attached.txt"
+    f.write_text("data", encoding="utf-8")
+
+    ctrl.state.attachment_bindings[slot_key] = str(f)
+    assert f.is_file()
+    assert slot_key in ctrl.state.attachment_bindings
+
+    ok = ctrl.delete_attached_file(slot_key, remove_binding=True)
+    assert ok is True
+
+    assert not f.exists()
+    assert slot_key not in ctrl.state.attachment_bindings
+
+
+def test_remove_attachment_binding_does_not_delete_physical_file(tmp_path):
+    ctrl = make_mock_ctrl()
+
+    slot_key = "s1::fileA"
+    f = tmp_path / "attached.txt"
+    f.write_text("data", encoding="utf-8")
+
+    ctrl.state.attachment_bindings[slot_key] = str(f)
+    assert f.is_file()
+    assert slot_key in ctrl.state.attachment_bindings
+
+    # "Clear file" should remove metadata binding only.
+    ctrl.remove_attachment_binding(slot_key)
+
+    assert f.exists() is True
+    assert slot_key not in ctrl.state.attachment_bindings
+
+
+def test_detach_attachments_for_step_removes_bindings_but_not_physical_files(
+    tmp_path,
+):
+    ctrl = make_mock_ctrl()
+
+    step = StepDef(
+        id="s1",
+        name="step1",
+        model="gpt",
+        prompt_version="1",
+        execution_mode="graph",
+        attachments=[
+            AttachmentSlot(
+                slot_id="fileA",
+                variable_name="input_file_a",
+                label="File A",
+                required=False,
+            ),
+            AttachmentSlot(
+                slot_id="fileB",
+                variable_name="input_file_b",
+                label="File B",
+                required=False,
+            ),
+        ],
+    )
+    wf = WorkflowDef(id="w1", name="WF", steps=[step])
+    ctrl.state.workflow_drafts["w1"] = wf
+    ctrl.state.selected_workflow_id = "w1"
+
+    f1 = tmp_path / "attached_a.txt"
+    f1.write_text("a", encoding="utf-8")
+    f2 = tmp_path / "attached_b.txt"
+    f2.write_text("b", encoding="utf-8")
+
+    assert f1.is_file()
+    assert f2.is_file()
+
+    ctrl.state.attachment_bindings["s1::fileA"] = str(f1)
+    ctrl.state.attachment_bindings["s1::fileB"] = str(f2)
+    assert "s1::fileA" in ctrl.state.attachment_bindings
+    assert "s1::fileB" in ctrl.state.attachment_bindings
+
+    removed = ctrl.detach_attachments_for_step("s1")
+    assert removed == 2
+
+    assert f1.exists() is True
+    assert f2.exists() is True
+    assert "s1::fileA" not in ctrl.state.attachment_bindings
+    assert "s1::fileB" not in ctrl.state.attachment_bindings
+
+
+def test_delete_attached_file_returns_false_when_binding_missing():
+    ctrl = make_mock_ctrl()
+    slot_key = "missing::slot"
+
+    assert slot_key not in ctrl.state.attachment_bindings
+    ok = ctrl.delete_attached_file(slot_key, remove_binding=True)
+    assert ok is False
+
+
+def test_delete_attached_file_returns_true_even_if_file_missing_but_binding_removed(
+    tmp_path,
+):
+    ctrl = make_mock_ctrl()
+
+    slot_key = "s1::fileA"
+    missing_path = tmp_path / "missing.txt"
+    assert missing_path.exists() is False
+
+    ctrl.state.attachment_bindings[slot_key] = str(missing_path)
+    assert slot_key in ctrl.state.attachment_bindings
+
+    # Current semantics: delete_attached_file returns True whenever binding exists,
+    # even if Path(path).is_file() is False and unlink() is not called.
+    ok = ctrl.delete_attached_file(slot_key, remove_binding=True)
+    assert ok is True
+
+    assert missing_path.exists() is False
+    assert slot_key not in ctrl.state.attachment_bindings
+
+
+def test_delete_attached_file_with_remove_binding_false_unlinks_but_keeps_binding(
+    tmp_path,
+):
+    ctrl = make_mock_ctrl()
+
+    slot_key = "s1::fileA"
+    f = tmp_path / "attached.txt"
+    f.write_text("data", encoding="utf-8")
+
+    ctrl.state.attachment_bindings[slot_key] = str(f)
+    assert f.is_file()
+    assert slot_key in ctrl.state.attachment_bindings
+
+    ok = ctrl.delete_attached_file(slot_key, remove_binding=False)
+    assert ok is True
+
+    assert f.exists() is False
+    assert slot_key in ctrl.state.attachment_bindings
+
+
 def test_add_step_below_creates_graph_ready_step():
     ctrl = make_mock_ctrl()
     ctrl.config_service.load_models.return_value = ["gpt-test"]

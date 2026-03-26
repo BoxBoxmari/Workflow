@@ -209,7 +209,10 @@ class ResultDrawer(ctk.CTkFrame):
 
             if hasattr(sr, "node_events") and sr.node_events:
                 evt_lines = [
-                    f"[{e.get('timestamp', '').split('T')[-1][:8]}] {e.get('type') or e.get('event_type', 'event')}"
+                    (
+                        f"[{(e.get('timestamp', '') or '').split('T')[-1][:8]}] "
+                        f"{e.get('type') or e.get('event_type', 'event')}"
+                    )
                     for e in sr.node_events
                 ]
                 results[DrawerTab.EVENTS.value] = "\n".join(evt_lines)

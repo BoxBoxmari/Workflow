@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from tkinter import messagebox
+from typing import Literal
 
 log = logging.getLogger("workbench.ui.dialogs")
 
@@ -35,7 +36,12 @@ def show_warning(title: str, message: str, parent=None) -> None:
         log.exception("Failed to show warning dialog: %s", title)
 
 
-def ask_yes_no(title: str, message: str, *, icon: str = "question", parent=None) -> bool:
+MessageBoxIcon = Literal["question", "warning", "error", "info"]
+
+
+def ask_yes_no(
+    title: str, message: str, *, icon: MessageBoxIcon = "question", parent=None
+) -> bool:
     """Ask a yes/no question and return False on UI failures."""
     try:
         if parent is not None and parent.winfo_exists():

@@ -535,6 +535,7 @@ class FlowCanvas(ctk.CTkFrame):
                 anchor=tk.W, pady=(0, 6)
             )
 
+            target_slot_key = ""
             if step.attachments:
                 chosen = next(
                     (
@@ -545,11 +546,6 @@ class FlowCanvas(ctk.CTkFrame):
                     step.attachments[0],
                 )
                 target_slot_key = f"{step_id}::{chosen.slot_id}"
-            else:
-                slot_id = self.ctrl.add_attachment_slot(
-                    step_id, label="Tệp đính kèm", required=False
-                )
-                target_slot_key = f"{step_id}::{slot_id}"
 
             raw_attached_paths = [
                 bindings.get(f"{step_id}::{s.slot_id}") for s in step.attachments
@@ -738,8 +734,8 @@ class FlowCanvas(ctk.CTkFrame):
                         width=84,
                         fg_color=T.CLR_BG,
                         hover_color=T.CLR_BORDER,
-                        command=lambda k=slot_key, m=modal, s=step_id: self._delete_file_and_refresh(
-                            k, m, s
+                        command=lambda: self._delete_file_and_refresh(
+                            slot_key, modal, step_id
                         ),
                     ).pack(side=tk.RIGHT, padx=(0, T.PAD_XS))
                 else:
@@ -795,14 +791,33 @@ class FlowCanvas(ctk.CTkFrame):
             ],
         )
         if paths:
-            self.ctrl.attach_files_to_slot(step_id, slot_key, list(paths))
+            target_key = slot_key
+            if "::" not in slot_key:
+                slot_id = self.ctrl.add_attachment_slot(
+                    step_id, label="Tệp đính kèm", required=False
+                )
+                if not slot_id:
+                    return
+                target_key = f"{step_id}::{slot_id}"
+
+            selected_count = len(paths)
+            bound = self.ctrl.attach_files_to_slot(step_id, target_key, list(paths))
+            if bound and bound < selected_count:
+                show_warning(
+                    "Giới hạn đính kèm",
+                    (
+                        f"Bạn đã chọn {selected_count} tệp nhưng chỉ đính kèm được {bound}.\n\n"
+                        "Lý do: giới hạn tối đa 5 tệp mỗi lần đính kèm và tối đa 12 ô tệp đính kèm mỗi bước."
+                    ),
+                    parent=modal,
+                )
             self._build_modal_content(modal, step_id)
 
     def _delete_file_and_refresh(
         self, slot_key: str, modal: ctk.CTkToplevel, step_id: str
     ) -> None:
-        """Delete bound file from disk and remove its binding."""
-        self.ctrl.delete_attached_file(slot_key, remove_binding=True)
+        """Remove attachment binding and refresh modal (does not delete disk file)."""
+        self.ctrl.remove_attachment_binding(slot_key)
         self._build_modal_content(modal, step_id)
 
     def _add_slot_and_refresh(self, modal: ctk.CTkToplevel, step_id: str) -> None:

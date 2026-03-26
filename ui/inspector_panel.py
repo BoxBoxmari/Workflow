@@ -913,24 +913,19 @@ class InspectorPanel(ctk.CTkFrame):
                     step.attachments[0],
                 )
                 target_slot_key = f"{step.id}::{chosen.slot_id}"
-            else:
-                # Create a single implicit slot for non-tech users.
-                slot_id = self.ctrl.add_attachment_slot(
-                    step.id, label="Tệp đính kèm", required=False
-                )
-                target_slot_key = f"{step.id}::{slot_id}"
 
-            attached_paths: list[str] = [
-                p
-                for p in (bindings.get(f"{step.id}::{s.slot_id}") for s in step.attachments)
-                if p is not None and p
-            ]
+            attached: list[tuple[str, str]] = []
+            for s in step.attachments:
+                k = f"{step.id}::{s.slot_id}"
+                p = bindings.get(k)
+                if p:
+                    attached.append((k, p))
 
             status = "Chưa có tệp nào được đính kèm."
-            if len(attached_paths) == 1:
-                status = f"Đã đính kèm: {Path(attached_paths[0]).name}"
-            elif len(attached_paths) > 1:
-                status = f"Đã đính kèm: {len(attached_paths)} tệp"
+            if len(attached) == 1:
+                status = f"Đã đính kèm: {Path(attached[0][1]).name}"
+            elif len(attached) > 1:
+                status = f"Đã đính kèm: {len(attached)} tệp"
 
             ctk.CTkLabel(
                 self.att_badge_frame,
@@ -939,7 +934,7 @@ class InspectorPanel(ctk.CTkFrame):
                 text_color=T.CLR_MUTED,
             ).pack(anchor=tk.W, pady=(0, 6))
 
-            btn_text = "Thay tệp" if attached_paths else "Đính kèm tệp"
+            btn_text = "Thay tệp" if attached else "Đính kèm tệp"
             ctk.CTkButton(
                 self.att_badge_frame,
                 text=btn_text,
@@ -949,6 +944,56 @@ class InspectorPanel(ctk.CTkFrame):
                 hover_color=T.CLR_BORDER,
                 text_color="#f8fafc",
             ).pack(anchor=tk.W)
+
+            if attached:
+                list_frame = ctk.CTkFrame(self.att_badge_frame, fg_color="transparent")
+                list_frame.pack(fill=tk.X, pady=(8, 0))
+
+                for slot_key, path in attached:
+                    row = ctk.CTkFrame(list_frame, fg_color="transparent")
+                    row.pack(fill=tk.X, pady=(2, 2))
+
+                    fname = Path(path).name
+                    is_missing = not Path(path).is_file()
+                    label_text = f"⚠ Missing: {fname}" if is_missing else f"✓ {fname}"
+                    label_color = T.CLR_ERROR if is_missing else T.CLR_MUTED
+
+                    name_label = ctk.CTkLabel(
+                        row,
+                        text=label_text,
+                        font=T.FONT_BODY,
+                        text_color=label_color,
+                        anchor="w",
+                        justify="left",
+                    )
+                    name_label.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+
+                    ctk.CTkButton(
+                        row,
+                        text="Xóa",
+                        command=lambda k=slot_key: self._remove_attachment(k),
+                        width=72,
+                        fg_color=T.CLR_SURFACE,
+                        hover_color=T.CLR_BORDER,
+                    ).grid(row=0, column=1, sticky="e")
+
+                    row.grid_columnconfigure(0, weight=1)
+
+                def _delete_bound_file() -> None:
+                    # In simple mode, the UX button should only remove the
+                    # attachment binding(s) from the step (not delete the file
+                    # on disk).
+                    self.ctrl.detach_attachments_for_step(step.id)
+                    self._refresh_att_badge()
+
+                ctk.CTkButton(
+                    self.att_badge_frame,
+                    text="Xóa tất cả",
+                    command=_delete_bound_file,
+                    width=160,
+                    fg_color=T.CLR_ERROR,
+                    hover_color="#dc2626",
+                ).pack(anchor=tk.W, pady=(6, 0))
             return
 
         if not step.attachments:
@@ -1103,7 +1148,7 @@ class InspectorPanel(ctk.CTkFrame):
                 font=T.FONT_BODY,
                 width=72,
                 anchor="w",
-            ).pack(side=tk.LEFT)
+            ).grid(row=0, column=0, sticky="w")
 
             if path:
                 fname = Path(path).name
@@ -1117,7 +1162,9 @@ class InspectorPanel(ctk.CTkFrame):
                     text=label_text,
                     font=T.FONT_BODY,
                     text_color=label_color,
-                ).pack(side=tk.LEFT, padx=5)
+                    anchor="w",
+                    justify="left",
+                ).grid(row=0, column=1, sticky="ew", padx=(8, 8))
                 ctk.CTkButton(
                     file_row,
                     text="Clear file",
@@ -1125,7 +1172,7 @@ class InspectorPanel(ctk.CTkFrame):
                     width=72,
                     fg_color=T.CLR_SURFACE,
                     hover_color=T.CLR_BORDER,
-                ).pack(side=tk.RIGHT)
+                ).grid(row=0, column=2, sticky="e")
                 ctk.CTkButton(
                     file_row,
                     text="Delete file",
@@ -1133,7 +1180,7 @@ class InspectorPanel(ctk.CTkFrame):
                     width=80,
                     fg_color=T.CLR_SURFACE,
                     hover_color=T.CLR_BORDER,
-                ).pack(side=tk.RIGHT, padx=(0, 5))
+                ).grid(row=0, column=3, sticky="e", padx=(8, 0))
             else:
                 ctk.CTkButton(
                     file_row,
@@ -1143,7 +1190,9 @@ class InspectorPanel(ctk.CTkFrame):
                     fg_color=T.CLR_SELECTED,
                     hover_color=T.CLR_BORDER,
                     text_color="#f8fafc",
-                ).pack(side=tk.LEFT, padx=5)
+                ).grid(row=0, column=1, sticky="w", padx=(8, 0))
+
+            file_row.grid_columnconfigure(1, weight=1)
 
         ctk.CTkButton(
             self.att_badge_frame,
@@ -1192,9 +1241,34 @@ class InspectorPanel(ctk.CTkFrame):
             ],
         )
         if paths:
+            selected_count = len(paths)
             if "::" in slot_key:
                 step_id, _ = slot_key.split("::", 1)
-                self.ctrl.attach_files_to_slot(step_id, slot_key, list(paths))
+                bound = self.ctrl.attach_files_to_slot(step_id, slot_key, list(paths))
+            else:
+                # Simple mode: no slot exists yet, so create it explicitly.
+                slot_id = self.ctrl.add_attachment_slot(
+                    self._current_step_id,
+                    label="Tệp đính kèm",
+                    required=False,
+                )
+                if slot_id:
+                    new_slot_key = f"{self._current_step_id}::{slot_id}"
+                    bound = self.ctrl.attach_files_to_slot(
+                        self._current_step_id, new_slot_key, list(paths)
+                    )
+                else:
+                    bound = 0
+
+            if bound and bound < selected_count:
+                show_warning(
+                    "Giới hạn đính kèm",
+                    (
+                        f"Bạn đã chọn {selected_count} tệp nhưng chỉ đính kèm được {bound}.\n\n"
+                        "Lý do: giới hạn tối đa 5 tệp mỗi lần đính kèm và tối đa 12 ô tệp đính kèm mỗi bước."
+                    ),
+                    parent=self,
+                )
             self._refresh_att_badge()
 
     def _remove_attachment(self, slot_key: str) -> None:
@@ -1203,8 +1277,8 @@ class InspectorPanel(ctk.CTkFrame):
         self._refresh_att_badge()
 
     def _delete_attachment_file(self, slot_key: str) -> None:
-        """Delete bound file from disk and refresh badge."""
-        self.ctrl.delete_attached_file(slot_key, remove_binding=True)
+        """Remove attachment binding and refresh badge (does not delete disk file)."""
+        self.ctrl.remove_attachment_binding(slot_key)
         self._refresh_att_badge()
 
     def _add_attachment_slot(self, step_id: str) -> None:

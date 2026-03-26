@@ -107,7 +107,7 @@ For large batch uploads (exceeding the quick-attach limits), use the **"Bulk att
    - Respect the 12-slot limit
    - Emit `attachment_ingested` events with validation metadata
 
-- A **Delete file** action is available in both modes and removes the physical file binding from the slot.
+- A **Delete file** action is available in both modes and removes the attachment binding from the slot (it does not delete the physical file from disk).
 
 ### Attachment ingestion validation
 

@@ -123,6 +123,11 @@ def _validate_signature(
     errors: list[str] = []
     signature_ok = True
 
+    # "off" means: skip validation side-effects (no warnings/errors; signature_ok stays True).
+    # This ensures ingest_file won't populate validation_warnings/validation_errors in off mode.
+    if validation_mode == "off":
+        return ([], [], True)
+
     # Get expectations for this extension
     expected = _EXTENSION_SIGNATURE_EXPECTATIONS.get(ext)
     if expected is None:

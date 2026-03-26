@@ -215,6 +215,22 @@ class TestIngestionSignatureValidation(unittest.TestCase):
         self.assertEqual(result.signature_type, "binary")
         self.assertTrue(any("binary data" in w for w in result.validation_warnings))
 
+    def test_off_mode_suppresses_validation_issues(self):
+        """validation_mode="off" should skip validation side-effects."""
+        with tempfile.NamedTemporaryFile(suffix=".txt", mode="wb", delete=False) as f:
+            # Write PNG signature (binary) but with .txt extension
+            f.write(b"\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR")
+            f.flush()
+            result = ingest_file(f.name, validation_mode="off")
+
+        self.assertTrue(result.ok)  # off mode should not hard-fail
+        self.assertFalse(result.has_validation_issues)
+        self.assertTrue(result.signature_ok)
+        self.assertEqual(result.validation_warnings, [])
+        self.assertEqual(result.validation_errors, [])
+        self.assertFalse(any("binary data" in w for w in result.warnings))
+        self.assertEqual(result.validation_mode, "off")
+
     def test_legitimate_txt_passes(self):
         """A real text file should pass validation."""
         with tempfile.NamedTemporaryFile(

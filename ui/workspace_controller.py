@@ -30,6 +30,7 @@ from core.config_service import ConfigService
 from core.enums import DrawerTab, WorkspaceMode, WorkspaceView
 from core.events import EventBus, external_change_detected, attachment_ingested
 from core.models import (
+    RunContext,
     StepDef,
     StepResult,
     WorkflowDef,
@@ -791,9 +792,36 @@ class WorkspaceController:
 
     def remove_attachment_binding(self, variable_name: str) -> None:
         """Remove a file binding for variable_name."""
+        if variable_name not in self.state.attachment_bindings:
+            return
+
         self.state.attachment_bindings.pop(variable_name, None)
         self.state.is_dirty = True
         self._notify()
+
+    def detach_attachments_for_step(self, step_id: str) -> int:
+        """
+        Detach all currently bound attachment files for a step.
+
+        This only clears bindings in memory/state; it does NOT delete physical
+        files from disk.
+
+        Returns number of removed bindings.
+        """
+        step = self.state.get_step_by_id(step_id)
+        if not step:
+            return 0
+
+        removed = 0
+        for slot in step.attachments:
+            k = f"{step_id}::{slot.slot_id}"
+            if self.state.attachment_bindings.pop(k, None) is not None:
+                removed += 1
+
+        if removed:
+            self.state.is_dirty = True
+            self._notify()
+        return removed
 
     def delete_attached_file(
         self, slot_key: str, *, remove_binding: bool = True
