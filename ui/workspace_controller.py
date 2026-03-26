@@ -45,6 +45,9 @@ from ui.workspace_state import WorkspaceState
 
 log = logging.getLogger("workbench.ui.controller")
 
+_MAX_ATTACHMENT_SLOTS_PER_STEP = 12
+_MAX_FILES_PER_ATTACH_ACTION = 5
+
 
 class WorkspaceController:
     """Central coordinator — the only place that mutates WorkspaceState."""
@@ -733,14 +736,27 @@ class WorkspaceController:
         First file binds to the selected slot. Remaining files create new slots
         on the same step and bind one file per slot.
         """
-        paths = [str(p).strip() for p in file_paths if str(p).strip()]
+        # De-duplicate to avoid accidental slot explosion from repeated picks.
+        paths = list(dict.fromkeys(str(p).strip() for p in file_paths if str(p).strip()))
         if not paths:
             return 0
         step = self.state.get_step_by_id(step_id)
         if not step or "::" not in slot_key:
             return 0
-        key_step_id, _ = slot_key.split("::", 1)
+        key_step_id, selected_slot_id = slot_key.split("::", 1)
         if key_step_id != step_id:
+            return 0
+        if not any(slot.slot_id == selected_slot_id for slot in step.attachments):
+            return 0
+
+        if len(paths) > _MAX_FILES_PER_ATTACH_ACTION:
+            paths = paths[:_MAX_FILES_PER_ATTACH_ACTION]
+
+        # First file reuses selected slot; remaining files can only create up to
+        # the configured per-step cap.
+        new_slot_capacity = max(_MAX_ATTACHMENT_SLOTS_PER_STEP - len(step.attachments), 0)
+        paths = paths[: 1 + new_slot_capacity]
+        if not paths:
             return 0
 
         self.state.attachment_bindings[slot_key] = paths[0]
@@ -1132,7 +1148,14 @@ class WorkspaceController:
                     except Exception:
                         status = "error"
                         error_msg = "Unable to read file for digest"
-                    if res.ok:
+                    if res.ok and not isinstance(res.content, str):
+                        status = "error"
+                        error_msg = "Attachment content is not text"
+                    elif res.ok and not res.content.strip():
+                        status = "error"
+                        error_msg = "Attachment content is empty after ingestion"
+
+                    if status == "ok" and res.ok:
                         variables[slot.variable_name] = res.content
                         attachment_meta[slot.variable_name] = {
                             "slot_id": slot.slot_id,
@@ -1158,7 +1181,7 @@ class WorkspaceController:
                             "error": error_msg,
                         }
                     )
-                    if not res.ok:
+                    if status != "ok":
                         ingest_errors.append(
                             "Step "
                             f"'{step.title or step.id}': "

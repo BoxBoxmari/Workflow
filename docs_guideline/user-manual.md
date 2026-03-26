@@ -74,7 +74,16 @@ This allows you to trace both:
 
 - Both **Simple mode** (Flow Canvas modal) and **Advanced mode** (Inspector attachments) support selecting **multiple files** in one action.
 - First selected file is bound to the current slot; additional files are auto-bound by creating new slots on the same step.
+- UX guard is applied to prevent slot explosion:
+  - Max **5 files per one attach action**.
+  - Max **12 attachment slots per step**.
 - A **Delete file** action is available in both modes and removes the physical file binding from the slot.
+
+### Attachment ingestion validation
+
+- A bound attachment must produce non-empty text content after ingestion.
+- If ingestion output is empty (or not text), run start is blocked with an attachment read failure.
+- This ensures the LLM is only invoked when attachment variables contain usable text payload.
 
 ### Events tab behavior
 

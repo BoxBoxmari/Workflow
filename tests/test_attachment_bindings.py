@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import MagicMock
-from core.models import WorkflowDef, StepDef, AttachmentSlot
+from core.models import AttachmentSlot, IngestResult, StepDef, WorkflowDef
 
 
 def test_slot_key_format_is_step_id_slot_id(controller):
@@ -145,3 +145,32 @@ def test_attachments_do_not_leak_across_steps(controller, temp_project_root):
         vars = mock_runner.run_async.call_args.kwargs["initial_variables"]
         assert vars["var1"] == "content1"
         assert vars["var2"] == "content2"
+
+
+def test_attachment_with_empty_ingested_content_blocks_run(controller, temp_project_root):
+    file_path = temp_project_root / "empty.txt"
+    file_path.write_text("", encoding="utf-8")
+
+    slot = AttachmentSlot(slot_id="fileA", variable_name="varA", required=True)
+    step = StepDef(
+        id="s1",
+        name="S1",
+        model="test-model-1",
+        prompt_version="1",
+        attachments=[slot],
+        input_mapping="input",
+        output_mapping="output",
+        execution_mode="legacy",
+    )
+    wf = WorkflowDef(id="wf1", name="WF", steps=[step])
+    controller.state.workflow_drafts["wf1"] = wf
+    controller.state.selected_workflow_id = "wf1"
+    controller.state.attachment_bindings["s1::fileA"] = str(file_path)
+
+    with pytest.MonkeyPatch.context() as m:
+        m.setattr(
+            "core.ingestion.ingest_file",
+            lambda *_args, **_kwargs: IngestResult(content="   "),
+        )
+        m.setattr("tkinter.messagebox.showerror", MagicMock())
+        assert controller.start_run() is False

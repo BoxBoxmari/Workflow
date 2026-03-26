@@ -305,6 +305,41 @@ def test_attach_files_to_slot_binds_all_and_creates_extra_slots(tmp_path):
     assert any(slot.label == "second copy.docx" for slot in step.attachments)
 
 
+def test_attach_files_to_slot_applies_multi_file_guard_limits(tmp_path):
+    ctrl = make_mock_ctrl()
+    step = StepDef(
+        id="s1",
+        name="step1",
+        model="gpt",
+        prompt_version="1",
+        execution_mode="graph",
+        attachments=[
+            AttachmentSlot(
+                slot_id="fileA",
+                variable_name="input_file",
+                label="Input file",
+                required=False,
+            )
+        ],
+    )
+    wf = WorkflowDef(id="w1", name="WF", steps=[step])
+    ctrl.state.workflow_drafts["w1"] = wf
+    ctrl.state.selected_workflow_id = "w1"
+
+    files: list[str] = []
+    for i in range(8):
+        p = tmp_path / f"f{i}.txt"
+        p.write_text(str(i), encoding="utf-8")
+        files.append(str(p))
+
+    bound = ctrl.attach_files_to_slot("s1", "s1::fileA", files)
+
+    # Guard limits one action to 5 files maximum.
+    assert bound == 5
+    assert len(step.attachments) == 5
+    assert len(ctrl.state.attachment_bindings) == 5
+
+
 def test_add_step_below_creates_graph_ready_step():
     ctrl = make_mock_ctrl()
     ctrl.config_service.load_models.return_value = ["gpt-test"]
