@@ -1,0 +1,43 @@
+{
+  "base_url": "https://api.workbench.kpmg/genai/azure/openai",
+  "timeout": 300,
+  "default_api_version": "2024-06-01",
+  "model_overrides": {
+    "gpt-4o-2024-08-06-gs-ae": {
+      "api_version": "2024-06-01"
+    },
+    "gpt-4o-2024-11-20-std-ae": {
+      "api_version": "2024-06-01"
+    },
+    "gpt-4o-mini-2024-07-18-gs-ae": {
+      "api_version": "2024-06-01"
+    },
+    "gpt-5-2025-08-07-gs-ae": {
+      "api_version": "2025-01-01-preview"
+    },
+    "gpt-5-mini-2025-08-07-gs-ae": {
+      "api_version": "2025-01-01-preview"
+    },
+    "gpt-5-nano-2025-08-07-gs-ae": {
+      "api_version": "2025-01-01-preview"
+    },
+    "gpt-5-1-2025-11-13-gs-ae": {
+      "api_version": "2025-01-01-preview"
+    },
+    "gpt-5-1-chat-2025-11-13-gs-ae": {
+      "api_version": "2025-01-01-preview"
+    },
+    "o3-2025-04-16-gs-ae": {
+      "api_version": "2024-12-01-preview"
+    },
+    "o4-mini-2025-04-16-gs-ae": {
+      "api_version": "2024-12-01-preview"
+    },
+    "text-embedding-3-large-1-std-ae": {
+      "api_version": "2024-06-01"
+    },
+    "text-embedding-3-small-1-std-ae": {
+      "api_version": "2024-06-01"
+    }
+  }
+}

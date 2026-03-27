@@ -57,13 +57,21 @@ WORKBENCH_CHARGE_CODE=your-code
 
 ## Provider Configuration
 
-`config/provider.json` — only `base_url`, `api_version`, and `timeout` are required here. Credentials should use the secure store instead:
+`config/provider.json` — configure `base_url`, `timeout`, and API version routing (`default_api_version` + `model_overrides`). Credentials should use the secure store instead:
 
 ```json
 {
   "base_url": "https://api.workbench.kpmg/genai/azure/openai",
-  "api_version": "2024-06-01",
-  "timeout": 300
+  "timeout": 300,
+  "default_api_version": "2024-06-01",
+  "model_overrides": {
+    "o3-2025-04-16-gs-ae": {
+      "api_version": "2024-12-01-preview"
+    },
+    "gpt-5-2025-08-07-gs-ae": {
+      "api_version": "2025-01-01-preview"
+    }
+  }
 }
 ```
 
@@ -154,6 +162,8 @@ For attachment traceability, two explicit event types are emitted:
 - `attachment_consumed_by_step`
   - `run_id`, `step_id`, `variable_name`, `source_file_sha256`
   - optional `slot_id`
+
+> Legacy workflow note: if a step has `attachments`, set `input_mapping` to the attachment `variable_name` so ingested file text is injected into that step prompt.
 
 ## Development Scripts
 

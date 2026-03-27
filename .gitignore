@@ -25,6 +25,9 @@ Thumbs.db
 # Local runtime/state artifacts
 runs/
 state/
+.env
+.env.*
+!.env.credentials.example
 
 # OpenMemory
 .cursor/rules/openmemory.mdc
