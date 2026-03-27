@@ -68,14 +68,21 @@ class WorkbenchClient:
         Create a client from a config dict (loaded from provider.json).
 
         Credential resolution priority:
-          1. OS Credential Manager / environment variables (via SecureCredentialStore)
-          2. Empty string if unavailable (caller decides readiness)
+          1. provider.json fields: subscription_key / charge_code
+          2. OS Credential Manager / environment variables (via SecureCredentialStore)
+          3. Empty string if unavailable (caller decides readiness)
         """
         from config.secure_credentials import SecureCredentialStore
 
-        # Attempt secure credential resolution first
-        subscription_key = SecureCredentialStore.get_api_key() or ""
-        charge_code = SecureCredentialStore.get_charge_code() or ""
+        # Prefer explicit values from provider.json when provided.
+        subscription_key = config.get("subscription_key") or ""
+        charge_code = config.get("charge_code") or ""
+
+        # Fall back to secure store / env if missing from config.
+        if not subscription_key:
+            subscription_key = SecureCredentialStore.get_api_key() or ""
+        if not charge_code:
+            charge_code = SecureCredentialStore.get_charge_code() or ""
 
         default_ver = config.get("default_api_version") or config.get(
             "api_version", "2024-06-01"

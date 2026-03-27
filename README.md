@@ -36,7 +36,7 @@ This application is designed as a Validation Workbench for business analysts, so
 
 ### API Key Storage
 
-API credentials (`subscription_key`, `charge_code`) are stored using the **OS Credential Manager** (Windows Credential Vault) via the `keyring` library — not in plain text files.
+API credentials (`subscription_key`, `charge_code`) can be configured directly in `config/provider.json` or loaded from secure sources (OS Credential Manager / environment variables).
 
 To configure credentials securely:
 
@@ -46,22 +46,24 @@ SecureCredentialStore.set_api_key("your-subscription-key")
 SecureCredentialStore.set_charge_code("your-charge-code")
 ```
 
-**Alternative:** Set environment variables for development or CI:
+Alternative for development/CI:
 
 ```
 WORKBENCH_SUBSCRIPTION_KEY=your-key
 WORKBENCH_CHARGE_CODE=your-code
 ```
 
-> ⚠️ Plaintext credentials in `config/provider.json` are ignored. Use OS Credential Manager (`keyring`) or environment variables.
+> Resolution order at runtime: `provider.json` -> OS Credential Manager (`keyring`) -> environment variables.
 
 ## Provider Configuration
 
-`config/provider.json` — configure `base_url`, `timeout`, and API version routing (`default_api_version` + `model_overrides`). Credentials should use the secure store instead:
+`config/provider.json` — configure credentials (`subscription_key`, `charge_code`), `base_url`, `timeout`, and API version routing (`default_api_version` + `model_overrides`):
 
 ```json
 {
   "base_url": "https://api.workbench.kpmg/genai/azure/openai",
+  "subscription_key": "your-subscription-key",
+  "charge_code": "your-charge-code",
   "timeout": 300,
   "default_api_version": "2024-06-01",
   "model_overrides": {

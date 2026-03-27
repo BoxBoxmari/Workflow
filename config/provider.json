@@ -1,5 +1,7 @@
 {
   "base_url": "https://api.workbench.kpmg/genai/azure/openai",
+  "subscription_key": "PUT_YOUR_SUBSCRIPTION_KEY_HERE",
+  "charge_code": "PUT_YOUR_CHARGE_CODE_HERE",
   "timeout": 300,
   "default_api_version": "2024-06-01",
   "model_overrides": {

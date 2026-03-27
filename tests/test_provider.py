@@ -98,7 +98,7 @@ class TestWorkbenchClient(unittest.TestCase):
         self.assertFalse(resp.ok)
         self.assertIn("timed out", resp.error)
 
-    def test_from_config(self):
+    def test_from_config_prefers_provider_json_credentials(self):
         config = {
             "base_url": "https://test.local",
             "subscription_key": "key",
@@ -114,26 +114,24 @@ class TestWorkbenchClient(unittest.TestCase):
             client = WorkbenchClient.from_config(config)
 
         self.assertEqual(client.base_url, "https://test.local")
-        self.assertEqual(client._session.headers["Ocp-Apim-Subscription-Key"], "secure-key")
-        self.assertEqual(client._session.headers["x-kpmg-charge-code"], "secure-code")
+        self.assertEqual(client._session.headers["Ocp-Apim-Subscription-Key"], "key")
+        self.assertEqual(client._session.headers["x-kpmg-charge-code"], "code")
 
-    def test_from_config_ignores_plaintext_fallback(self):
+    def test_from_config_falls_back_to_secure_store_when_missing_in_config(self):
         config = {
             "base_url": "https://test.local",
-            "subscription_key": "plaintext-key",
-            "charge_code": "plaintext-code",
         }
         with patch(
             "config.secure_credentials.SecureCredentialStore.get_api_key",
-            return_value=None,
+            return_value="secure-key",
         ), patch(
             "config.secure_credentials.SecureCredentialStore.get_charge_code",
-            return_value=None,
+            return_value="secure-code",
         ):
             client = WorkbenchClient.from_config(config)
 
-        self.assertEqual(client._session.headers["Ocp-Apim-Subscription-Key"], "")
-        self.assertEqual(client._session.headers["x-kpmg-charge-code"], "")
+        self.assertEqual(client._session.headers["Ocp-Apim-Subscription-Key"], "secure-key")
+        self.assertEqual(client._session.headers["x-kpmg-charge-code"], "secure-code")
 
     def test_from_config_default_api_version_and_model_overrides(self):
         config = {
